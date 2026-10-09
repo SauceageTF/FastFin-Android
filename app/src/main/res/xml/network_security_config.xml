@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Jellyfin servers usually live on a LAN address over plain HTTP, or behind a
+     self-signed certificate. Same stance as the iOS build's
+     NSAllowsArbitraryLoads, plus user-installed CAs for home setups. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
