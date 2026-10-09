@@ -62,7 +62,9 @@ import com.veeha.fastfin.playback.Delivery
 import com.veeha.fastfin.playback.PlaybackManager
 import com.veeha.fastfin.playback.PlaybackSource
 import com.veeha.fastfin.playback.PlayerUi
+import com.veeha.fastfin.ui.LocalGraph
 import com.veeha.fastfin.ui.LocalPip
+import com.veeha.fastfin.data.PlayerLayout
 import com.veeha.fastfin.ui.components.Glass
 import com.veeha.fastfin.ui.components.GlassButton
 import com.veeha.fastfin.ui.components.GlassStyle
@@ -92,6 +94,7 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
 
     val isPlaying by playback.isPlaying.collectAsStateWithLifecycle()
     val buffering by playback.isBuffering.collectAsStateWithLifecycle()
+    val centered = LocalGraph.current.settings.flow.collectAsStateWithLifecycle().value.playerLayout == PlayerLayout.Center
     var visible by remember { mutableStateOf(true) }
     var interactions by remember { mutableIntStateOf(0) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -165,7 +168,8 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
             }
         }
 
-        if (buffering) {
+        // The centre layout shows buffering inside its play button while the controls are up.
+        if (buffering && !(centered && visible)) {
             BufferingIndicator(Modifier.align(Alignment.Center))
         }
 
@@ -181,6 +185,8 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
                 buffered = { bufferedMs },
                 durationMs = durationMs,
                 scrubbing = scrubMs != null,
+                centered = centered,
+                buffering = buffering,
                 pipSupported = pip.supported,
                 onCollapse = { playback.collapse() },
                 onClose = { playback.close() },

@@ -53,6 +53,7 @@ import coil3.SingletonImageLoader
 import com.veeha.fastfin.BuildConfig
 import com.veeha.fastfin.data.AccentName
 import com.veeha.fastfin.data.HdrMode
+import com.veeha.fastfin.data.PlayerLayout
 import com.veeha.fastfin.data.StreamingQuality
 import com.veeha.fastfin.playback.DeviceCapabilities
 import com.veeha.fastfin.playback.HdrType
@@ -142,6 +143,20 @@ fun SettingsScreen(bottomInset: Dp) {
             Segmented(HdrMode.entries, settings.hdr, { it.label }) { mode ->
                 tick()
                 graph.settings.update { it.copy(hdr = mode) }
+            }
+        }
+
+        Section(
+            "Player controls",
+            if (settings.playerLayout == PlayerLayout.Bottom) {
+                "Play and skip sit with the timeline along the bottom, leaving the picture completely clear."
+            } else {
+                "Large play and skip buttons in the middle of the screen, easy to hit without looking."
+            },
+        ) {
+            Segmented(PlayerLayout.entries, settings.playerLayout, { it.label }) { layout ->
+                tick()
+                graph.settings.update { it.copy(playerLayout = layout) }
             }
         }
 

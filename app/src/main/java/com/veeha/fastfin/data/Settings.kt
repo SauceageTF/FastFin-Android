@@ -30,12 +30,23 @@ enum class StreamingQuality(val label: String, val bitrate: Int) {
  */
 enum class HdrMode(val label: String) { Auto("Auto"), Always("Always HDR"), Sdr("Tone-map") }
 
+/**
+ * Where the player's transport controls sit.
+ *
+ * - Bottom: play and ±10 s share the bottom band with the timeline; the
+ *   picture stays completely clear.
+ * - Center: large play and ±10 s buttons in the middle of the screen, easy to
+ *   hit without looking.
+ */
+enum class PlayerLayout(val label: String) { Bottom("Bottom"), Center("Center") }
+
 @Immutable
 data class AppSettings(
     val accent: AccentName = AccentName.Ember,
     val quality: StreamingQuality = StreamingQuality.Original,
     val hdr: HdrMode = HdrMode.Auto,
     val autoPip: Boolean = true,
+    val playerLayout: PlayerLayout = PlayerLayout.Bottom,
 )
 
 /**
@@ -60,6 +71,7 @@ class SettingsStore(context: Context) {
             putString("quality", next.quality.name)
             putString("hdr", next.hdr.name)
             putBoolean("autoPip", next.autoPip)
+            putString("playerLayout", next.playerLayout.name)
         }
     }
 
@@ -70,6 +82,7 @@ class SettingsStore(context: Context) {
             quality = enumOr(prefs.getString("quality", null), defaults.quality),
             hdr = enumOr(prefs.getString("hdr", null), defaults.hdr),
             autoPip = prefs.getBoolean("autoPip", defaults.autoPip),
+            playerLayout = enumOr(prefs.getString("playerLayout", null), defaults.playerLayout),
         )
     }
 

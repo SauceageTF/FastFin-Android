@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -176,6 +177,9 @@ internal fun PlayerControls(
     durationMs: Long,
     scrubbing: Boolean,
     pipSupported: Boolean,
+    /** Big transport in the middle of the screen instead of the bottom band. */
+    centered: Boolean = false,
+    buffering: Boolean = false,
     onCollapse: () -> Unit,
     onClose: () -> Unit,
     onPip: () -> Unit,
@@ -206,7 +210,29 @@ internal fun PlayerControls(
                 BareIconButton(Lucide.Close, "Close player", onClose, iconSize = m.icon, touch = m.touch)
             }
 
-            // Bottom: the timeline, then transport and tracks in one band.
+            // Centre layout: large transport in the middle, easy to hit blind.
+            if (ready && centered) {
+                Row(
+                    Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.spacedBy(m.centerGap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CenterButton(Lucide.RotateCcw, "Back 10 seconds", m.centerSkip, { onSkip(-10_000) }) {
+                        Text("10", color = FF.Text, fontWeight = FontWeight.ExtraBold, style = tight(if (m == HudMetrics.Wide) 12.sp else 10.5.sp))
+                    }
+                    CenterButton(
+                        if (isPlaying) Lucide.Pause else Lucide.Play, if (isPlaying) "Pause" else "Play", m.centerPlay, onTogglePlay,
+                        // The play triangle's visual centre sits left of its box; nudge it.
+                        iconOffset = if (isPlaying) 0.dp else 3.dp,
+                        busy = buffering,
+                    )
+                    CenterButton(Lucide.RotateCw, "Forward 10 seconds", m.centerSkip, { onSkip(10_000) }) {
+                        Text("10", color = FF.Text, fontWeight = FontWeight.ExtraBold, style = tight(if (m == HudMetrics.Wide) 12.sp else 10.5.sp))
+                    }
+                }
+            }
+
+            // Bottom: the timeline, then transport (bottom layout) and tracks in one band.
             if (ready) {
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                     Scrubber(position, buffered, durationMs, scrubbing, onScrub, onScrubEnd, Modifier.fillMaxWidth())
@@ -216,12 +242,14 @@ internal fun PlayerControls(
                         Text("-" + formatClock((durationMs - position()).coerceAtLeast(0)), color = FF.TextSecondary, style = Clock)
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        BareIconButton(
-                            if (isPlaying) Lucide.Pause else Lucide.Play, if (isPlaying) "Pause" else "Play", onTogglePlay,
-                            iconSize = m.icon + 4.dp, touch = m.touch + 4.dp,
-                        )
-                        SkipIcon(back = true, m) { onSkip(-10_000) }
-                        SkipIcon(back = false, m) { onSkip(10_000) }
+                        if (!centered) {
+                            BareIconButton(
+                                if (isPlaying) Lucide.Pause else Lucide.Play, if (isPlaying) "Pause" else "Play", onTogglePlay,
+                                iconSize = m.icon + 4.dp, touch = m.touch + 4.dp,
+                            )
+                            SkipIcon(back = true, m) { onSkip(-10_000) }
+                            SkipIcon(back = false, m) { onSkip(10_000) }
+                        }
                         Spacer(Modifier.weight(1f))
                         trackMenu()
                     }
@@ -235,6 +263,37 @@ internal fun PlayerControls(
 @Composable
 internal fun BufferingIndicator(modifier: Modifier = Modifier) {
     CircularProgressIndicator(modifier.size(40.dp), color = Color.White, strokeWidth = 3.dp)
+}
+
+/**
+ * A large centre control: the icon on a soft dark disc so it stays legible
+ * over bright scenes without the weight of a glass bubble.
+ */
+@Composable
+private fun CenterButton(
+    icon: ImageVector,
+    label: String,
+    diameter: Dp,
+    onClick: () -> Unit,
+    iconOffset: Dp = 0.dp,
+    busy: Boolean = false,
+    overlay: (@Composable () -> Unit)? = null,
+) {
+    Box(
+        Modifier
+            .size(diameter)
+            .pressable(pressedScale = 0.92f, haptic = true, onClick = onClick)
+            .clip(CircleShape)
+            .background(Color(0x4D000000)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (busy) {
+            CircularProgressIndicator(Modifier.size(diameter * 0.4f), color = Color.White, strokeWidth = 3.dp)
+        } else {
+            Icon(icon, label, Modifier.padding(start = iconOffset).size(diameter * 0.46f), tint = FF.Text)
+            overlay?.invoke()
+        }
+    }
 }
 
 @Composable
@@ -318,7 +377,12 @@ internal enum class HudMetrics(
     val titleTop: Dp,
     val icon: Dp,
     val touch: Dp,
+    val centerPlay: Dp,
+    val centerSkip: Dp,
+    val centerGap: Dp,
 ) {
-    Phone(sideMargin = 20.dp, edgeMargin = 12.dp, title = 19.sp, subtitle = 13.sp, titleTop = 12.dp, icon = 22.dp, touch = 44.dp),
-    Wide(sideMargin = 40.dp, edgeMargin = 24.dp, title = 26.sp, subtitle = 15.sp, titleTop = 13.dp, icon = 26.dp, touch = 52.dp),
+    Phone(sideMargin = 20.dp, edgeMargin = 12.dp, title = 19.sp, subtitle = 13.sp, titleTop = 12.dp, icon = 22.dp, touch = 44.dp,
+        centerPlay = 76.dp, centerSkip = 58.dp, centerGap = 40.dp),
+    Wide(sideMargin = 40.dp, edgeMargin = 24.dp, title = 26.sp, subtitle = 15.sp, titleTop = 13.dp, icon = 26.dp, touch = 52.dp,
+        centerPlay = 96.dp, centerSkip = 72.dp, centerGap = 64.dp),
 }

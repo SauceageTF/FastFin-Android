@@ -114,10 +114,17 @@ class LayoutScreenshotTest(private val name: String, private val device: DeviceC
         }
     }
 
-    /** The full-screen HUD over a stand-in frame: title, HDR badge, timeline, transport. */
-    @Suppress("ConfigurationScreenWidthHeight")
+    /** The full-screen HUD over a stand-in frame, bottom transport (the default). */
     @Test
-    fun player() {
+    fun player() = renderPlayer(centered = false)
+
+    /** The same HUD with the "Center" player-controls setting. */
+    @Test
+    fun playerCentered() = renderPlayer(centered = true)
+
+    // The emulated device's configuration is the size Paparazzi renders at.
+    @Suppress("ConfigurationScreenWidthHeight")
+    private fun renderPlayer(centered: Boolean) {
         paparazzi.snapshot {
             val config = LocalConfiguration.current
             val layout = Layout.of(androidx.compose.ui.unit.DpSize(config.screenWidthDp.dp, config.screenHeightDp.dp))
@@ -133,7 +140,7 @@ class LayoutScreenshotTest(private val name: String, private val device: DeviceC
                         title = "Severance", subtitle = "E4 · The You You Are", hdr = "Dolby Vision",
                         ready = true, isPlaying = true, scrubbing = false,
                         position = { 754_000 }, buffered = { 1_400_000 }, durationMs = 3_120_000,
-                        pipSupported = true,
+                        pipSupported = true, centered = centered,
                         onCollapse = {}, onClose = {}, onPip = {}, onSkip = {}, onTogglePlay = {}, onScrub = {}, onScrubEnd = {},
                         trackMenu = { TrackChip("English EAC3  ·  Subtitles off", {}) },
                     )
