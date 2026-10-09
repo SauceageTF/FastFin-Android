@@ -47,17 +47,18 @@ import androidx.compose.ui.unit.sp
 import com.veeha.fastfin.data.Item
 import com.veeha.fastfin.data.formatRuntime
 import com.veeha.fastfin.data.isResumable
-import com.veeha.fastfin.data.isSeries
+import com.veeha.fastfin.data.isPlayable
 import com.veeha.fastfin.data.playedFraction
 import com.veeha.fastfin.ui.LocalImages
 import com.veeha.fastfin.ui.LocalLayout
 import com.veeha.fastfin.ui.components.Artwork
-import com.veeha.fastfin.ui.components.Glass
-import com.veeha.fastfin.ui.components.GlassButton
-import com.veeha.fastfin.ui.components.GlassPillButton
-import com.veeha.fastfin.ui.components.GlassStyle
+import com.veeha.fastfin.ui.components.Panel
+import com.veeha.fastfin.ui.components.RoundButton
+import com.veeha.fastfin.ui.components.PillButton
+import com.veeha.fastfin.ui.components.PanelStyle
 import com.veeha.fastfin.ui.components.Lucide
 import com.veeha.fastfin.ui.components.ProgressLine
+import com.veeha.fastfin.ui.components.rememberPlainText
 import com.veeha.fastfin.ui.components.pressable
 import com.veeha.fastfin.ui.components.NoShape
 import com.veeha.fastfin.ui.px
@@ -115,14 +116,14 @@ private fun NarrowHero(slides: List<Item>, autoAdvance: Boolean, onPrimary: (Ite
             Modifier.fillMaxWidth().padding(top = statusBar + 8.dp, start = 18.dp, end = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Glass(Modifier.height(40.dp), shape = FF.Pill, style = GlassStyle.Clear, contentAlignment = Alignment.Center) {
+            Panel(Modifier.height(40.dp), shape = FF.Pill, style = PanelStyle.Overlay, contentAlignment = Alignment.Center) {
                 Text(
                     "FastFin", Modifier.padding(horizontal = 16.dp), color = FF.Text, fontSize = 17.sp,
                     fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.2).sp,
                 )
             }
             Box(Modifier.weight(1f))
-            GlassButton(Lucide.Search, "Search", onSearch, style = GlassStyle.Clear)
+            RoundButton(Lucide.Search, "Search", onSearch, style = PanelStyle.Overlay)
         }
 
         if (slides.size > 1) Dots(pager, slides.size, Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
@@ -130,10 +131,12 @@ private fun NarrowHero(slides: List<Item>, autoAdvance: Boolean, onPrimary: (Ite
 }
 
 private fun primaryLabel(item: Item) = when {
-    item.isSeries -> "View Episodes"
+    !item.isPlayable -> "View Episodes"
     item.isResumable -> "Resume"
     else -> "Play"
 }
+
+private fun primaryIcon(item: Item) = if (item.isPlayable) Lucide.Play else Lucide.Rows
 
 private fun metaLine(item: Item, genres: Int) = (
     listOfNotNull(
@@ -181,7 +184,7 @@ private fun WideHero(slides: List<Item>, autoAdvance: Boolean, onPrimary: (Item)
                     .height(52.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                Glass(Modifier.height(40.dp), shape = FF.Pill, style = GlassStyle.Clear, contentAlignment = Alignment.Center) {
+                Panel(Modifier.height(40.dp), shape = FF.Pill, style = PanelStyle.Overlay, contentAlignment = Alignment.Center) {
                     Text(
                         "FastFin", Modifier.padding(horizontal = 16.dp), color = FF.Text, fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.2).sp,
@@ -249,12 +252,12 @@ private fun WideSlide(item: Item, compact: Boolean, onPrimary: (Item) -> Unit, o
                     }
                     if (!compact) {
                         item.overview?.let {
-                            Text(it, color = FF.TextSecondary, fontSize = 14.5.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            Text(rememberPlainText(it), color = FF.TextSecondary, fontSize = 14.5.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        GlassPillButton(primaryLabel(item), { onPrimary(item) }, Modifier.widthIn(min = 180.dp), icon = Lucide.Play, prominent = true)
-                        GlassButton(Lucide.Info, "Details", { onInfo(item) }, diameter = 46.dp)
+                        PillButton(primaryLabel(item), { onPrimary(item) }, Modifier.widthIn(min = 180.dp), icon = primaryIcon(item), prominent = true)
+                        RoundButton(Lucide.Info, "Details", { onInfo(item) }, diameter = 46.dp)
                     }
                     if (item.isResumable && item.playedFraction > 0f) {
                         ProgressLine(item.playedFraction, Modifier.width(236.dp), track = Color(0x40FFFFFF))
@@ -285,7 +288,7 @@ private fun HeroSlide(item: Item, topPadding: Dp, posterWidth: Dp, posterHeight:
     val images = LocalImages.current
     val posterPx = posterWidth.px()
     val label = when {
-        item.isSeries -> "View Episodes"
+        !item.isPlayable -> "View Episodes"
         item.isResumable -> "Resume"
         else -> "Play"
     }
@@ -328,8 +331,8 @@ private fun HeroSlide(item: Item, topPadding: Dp, posterWidth: Dp, posterHeight:
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    GlassPillButton(label, { onPrimary(item) }, Modifier.weight(1f), icon = Lucide.Play, prominent = true)
-                    GlassButton(Lucide.Info, "Details", { onInfo(item) }, diameter = 46.dp)
+                    PillButton(label, { onPrimary(item) }, Modifier.weight(1f), icon = primaryIcon(item), prominent = true)
+                    RoundButton(Lucide.Info, "Details", { onInfo(item) }, diameter = 46.dp)
                 }
             }
         }
@@ -339,7 +342,7 @@ private fun HeroSlide(item: Item, topPadding: Dp, posterWidth: Dp, posterHeight:
 @Composable
 private fun Dots(pager: PagerState, count: Int, modifier: Modifier) {
     val scope = rememberCoroutineScope()
-    Glass(modifier.height(22.dp), shape = FF.Pill, style = GlassStyle.Clear, contentAlignment = Alignment.Center) {
+    Panel(modifier.height(22.dp), shape = FF.Pill, style = PanelStyle.Overlay, contentAlignment = Alignment.Center) {
         Row(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             repeat(count) { index ->
                 val active = index == pager.currentPage

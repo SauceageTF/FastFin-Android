@@ -23,10 +23,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +53,7 @@ import com.veeha.fastfin.data.Repository
 import com.veeha.fastfin.data.formatRuntime
 import com.veeha.fastfin.data.isEpisode
 import com.veeha.fastfin.data.isMovie
+import com.veeha.fastfin.data.isPlayable
 import com.veeha.fastfin.data.isResumable
 import com.veeha.fastfin.data.isSeries
 import com.veeha.fastfin.data.isWatched
@@ -61,13 +66,14 @@ import com.veeha.fastfin.ui.components.CarouselRow
 import com.veeha.fastfin.ui.components.CenterSpinner
 import com.veeha.fastfin.ui.components.EpisodeCard
 import com.veeha.fastfin.ui.components.ErrorCard
-import com.veeha.fastfin.ui.components.Glass
-import com.veeha.fastfin.ui.components.GlassButton
-import com.veeha.fastfin.ui.components.GlassPillButton
-import com.veeha.fastfin.ui.components.GlassStyle
+import com.veeha.fastfin.ui.components.Panel
+import com.veeha.fastfin.ui.components.RoundButton
+import com.veeha.fastfin.ui.components.PillButton
+import com.veeha.fastfin.ui.components.PanelStyle
 import com.veeha.fastfin.ui.components.Lucide
 import com.veeha.fastfin.ui.components.PosterCard
 import com.veeha.fastfin.ui.components.ProgressLine
+import com.veeha.fastfin.ui.components.rememberPlainText
 import com.veeha.fastfin.ui.components.TopBar
 import com.veeha.fastfin.ui.components.pressable
 import com.veeha.fastfin.ui.nav.Navigator
@@ -104,6 +110,23 @@ fun ItemDetailScreen(route: Route.Detail, nav: Navigator, bottomInset: Dp) {
     val heroHeight = if (layout.wide) minOf(560.dp, window.height * 0.62f) else minOf(440.dp, window.height * 0.52f)
     val screenPx = window.width.px()
 
+    // A show keeps its seasons and episodes on this page. The chosen season
+    // drives both the episode carousel and what the Play button starts.
+    val seasons = if (item.isSeries) {
+        rememberLoad("seasons:${item.id}", ITEM_TTL) { graph.api.seasons(item.id) }.value.data
+    } else null
+    var chosenSeason by rememberSaveable(item.id) { mutableStateOf(route.seasonId) }
+    val season = seasons?.let { list ->
+        list.firstOrNull { it.id == chosenSeason }
+            // Specials (season 0) are rarely where anyone starts.
+            ?: list.firstOrNull { (it.indexNumber ?: 1) > 0 } ?: list.firstOrNull()
+    }
+    val episodesLoad = season?.let { s ->
+        rememberLoad("episodes:${item.id}:${s.id}", ITEM_TTL) { graph.api.episodes(item.id, s.id) }.value
+    }
+    val episodes = episodesLoad?.data
+    val upNext = episodes?.let(::upNextIn)
+
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomInset + 48.dp)) {
             item("hero") {
@@ -113,15 +136,19 @@ fun ItemDetailScreen(route: Route.Detail, nav: Navigator, bottomInset: Dp) {
                     Box(Modifier.fillMaxSize().background(BottomScrim))
                 }
             }
-            item("info") { InfoBlock(item, nav) }
-            if (item.isSeries) item("seasons") { SeasonsRow(item, nav) }
+            item("info") { InfoBlock(item, nav, upNext) }
+            if (item.isSeries && !seasons.isNullOrEmpty() && season != null) {
+                item("episodes") {
+                    EpisodesSection(seasons, season, episodes, episodesLoad?.error, upNext) { chosenSeason = it.id }
+                }
+            }
             if (item.isEpisode && item.seriesId != null && item.seasonId != null) item("next") { NextUpRow(item) }
             if (item.isMovie || item.isSeries) item("similar") { SimilarRow(item, nav) }
         }
-        GlassButton(
+        RoundButton(
             Lucide.ChevronLeft, "Back", { nav.pop() },
             Modifier.statusBarsPadding().padding(start = LocalLayout.current.gutter - 4.dp, top = 6.dp),
-            diameter = 40.dp, style = GlassStyle.Clear,
+            diameter = 40.dp, style = PanelStyle.Overlay,
         )
     }
 }
@@ -134,13 +161,12 @@ private fun Modifier.overlapUp(amount: Dp) = layout { measurable, constraints ->
 }
 
 @Composable
-private fun InfoBlock(item: Item, nav: Navigator) {
+private fun InfoBlock(item: Item, nav: Navigator, upNext: Item?) {
     val graph = LocalGraph.current
     val images = LocalImages.current
     val accent = LocalAccent.current
     var expanded by rememberSaveable { mutableStateOf(false) }
     val logo = images.logo(item, 240.dp.px())
-    val seasonsLoad by rememberLoad("seasons:${item.id}", ITEM_TTL) { if (item.isSeries) graph.api.seasons(item.id) else emptyList() }
 
     Column(
         Modifier.overlapUp(72.dp).padding(horizontal = LocalLayout.current.gutter).widthIn(max = 760.dp).padding(bottom = 30.dp),
@@ -173,25 +199,28 @@ private fun InfoBlock(item: Item, nav: Navigator) {
             }
         }
 
-        if (!item.isSeries) {
+        if (item.isPlayable) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    GlassPillButton(
+                    PillButton(
                         if (item.isResumable) "Resume" else "Play", { graph.playback.open(item) },
                         Modifier.weight(1f), icon = Lucide.Play, prominent = true,
                     )
                     if (item.isResumable) {
-                        GlassButton(Lucide.RotateCcw, "Play from beginning", { graph.playback.open(item, restart = true) }, diameter = 46.dp)
+                        RoundButton(Lucide.RotateCcw, "Play from beginning", { graph.playback.open(item, restart = true) }, diameter = 46.dp)
                     }
                 }
                 if (item.playedFraction > 0f) ProgressLine(item.playedFraction, track = Color(0x33FFFFFF))
             }
-        } else {
-            seasonsLoad.data?.firstOrNull()?.let { first ->
-                GlassPillButton(
-                    "Browse Episodes", { nav.push(Route.Season(item.id, first.id, first.name)) },
-                    Modifier.fillMaxWidth(), icon = Lucide.Rows, prominent = true,
+        } else if (item.isSeries && upNext != null) {
+            // The show's Play starts the episode the carousel highlights.
+            val verb = if (upNext.isResumable) "Resume" else "Play"
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton(
+                    "$verb ${shortCode(upNext)}", { graph.playback.open(upNext) },
+                    Modifier.fillMaxWidth(), icon = Lucide.Play, prominent = true,
                 )
+                if (upNext.isResumable) ProgressLine(upNext.playedFraction, track = Color(0x33FFFFFF))
             }
         }
 
@@ -201,7 +230,7 @@ private fun InfoBlock(item: Item, nav: Navigator) {
 
         item.overview?.let {
             Text(
-                it, color = FF.TextSecondary, fontSize = 14.5.sp, lineHeight = 21.sp,
+                rememberPlainText(it), color = FF.TextSecondary, fontSize = 14.5.sp, lineHeight = 21.sp,
                 maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.pressable(pressedScale = 1f) { expanded = !expanded },
             )
@@ -210,7 +239,7 @@ private fun InfoBlock(item: Item, nav: Navigator) {
         item.genres?.takeIf { it.isNotEmpty() }?.let { genres ->
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 genres.forEach { genre ->
-                    Glass(shape = FF.Pill, style = GlassStyle.Clear) {
+                    Panel(shape = FF.Pill, tint = FF.Field) {
                         Text(genre, Modifier.padding(horizontal = 13.dp, vertical = 7.dp), color = FF.TextSecondary, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
@@ -224,24 +253,97 @@ private fun Meta(text: String) = Text(text, color = FF.TextDim, fontSize = 13.sp
 
 @Composable
 private fun Chip(text: String) {
-    Box(Modifier.border(1.dp, FF.GlassRim, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp)) {
+    Box(Modifier.border(1.dp, FF.Rim, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp)) {
         Text(text, color = FF.TextDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun SeasonsRow(series: Item, nav: Navigator) {
+private fun EpisodesSection(
+    seasons: List<Item>,
+    season: Item,
+    episodes: List<Item>?,
+    error: String?,
+    upNext: Item?,
+    onSeason: (Item) -> Unit,
+) {
     val graph = LocalGraph.current
-    val seasons = rememberLoad("seasons:${series.id}", ITEM_TTL) { graph.api.seasons(series.id) }.value.data
-    if (seasons.isNullOrEmpty()) return
+    val layout = LocalLayout.current
+    val gutter = layout.gutter
+    val cardWidth = layout.landscapeCard
     Column(Modifier.padding(bottom = 30.dp)) {
-        CarouselRow("Seasons") {
-            items(seasons, key = { it.id }) { season ->
-                PosterCard(season, onClick = { nav.push(Route.Season(series.id, season.id, season.name)) }, title = season.name, subtitle = null)
+        Text(
+            "Episodes", Modifier.padding(horizontal = gutter).padding(bottom = 12.dp),
+            color = FF.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp,
+        )
+        // Season toggles: one is always on, and switching swaps the carousel in place.
+        if (seasons.size > 1) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = gutter),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 14.dp),
+            ) {
+                items(seasons, key = { it.id }) { s -> SeasonToggle(s.name, s.id == season.id) { onSeason(s) } }
+            }
+        }
+        // A fresh list state per season, so each one starts at its own beginning.
+        key(season.id) {
+            val listState = rememberLazyListState()
+            // Land on the episode Play would start, once the list arrives.
+            LaunchedEffect(episodes != null) {
+                val index = episodes?.indexOf(upNext) ?: -1
+                if (index > 0) listState.scrollToItem(index)
+            }
+            when {
+                episodes == null && error == null -> Box(Modifier.fillMaxWidth().height(cardWidth * 9f / 16f + 44.dp)) { CenterSpinner() }
+                episodes == null -> Text(
+                    "Couldn't load episodes: $error", Modifier.padding(horizontal = gutter),
+                    color = FF.TextDim, fontSize = 13.sp,
+                )
+                episodes.isEmpty() -> Text(
+                    "No episodes in this season yet.", Modifier.padding(horizontal = gutter),
+                    color = FF.TextDim, fontSize = 13.sp,
+                )
+                else -> LazyRow(
+                    state = listState,
+                    contentPadding = PaddingValues(horizontal = gutter),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(episodes, key = { it.id }, contentType = { "episode" }) { episode ->
+                        EpisodeCard(episode, onClick = { graph.playback.open(episode) }, width = cardWidth)
+                    }
+                }
             }
         }
     }
 }
+
+/** A season choice: white when on, a solid field when off. */
+@Composable
+private fun SeasonToggle(label: String, selected: Boolean, onClick: () -> Unit) {
+    val chip = Modifier.height(36.dp).pressable(role = Role.Tab, onClick = onClick)
+    if (selected) {
+        Box(chip.clip(FF.Pill).background(FF.Text).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+            Text(label, color = FF.OnLight, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+        }
+    } else {
+        Panel(chip, shape = FF.Pill, tint = FF.Field, contentAlignment = Alignment.Center) {
+            Text(label, Modifier.padding(horizontal = 16.dp), color = FF.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/** The episode to start: one in progress, else the first unwatched, else the first. */
+private fun upNextIn(episodes: List<Item>): Item? =
+    episodes.firstOrNull { it.isResumable && !it.isWatched }
+        ?: episodes.firstOrNull { !it.isWatched }
+        ?: episodes.firstOrNull()
+
+/** "S2 E3", or just "E3" when the season number is unknown. */
+private fun shortCode(episode: Item): String = listOfNotNull(
+    episode.parentIndexNumber?.let { "S$it" },
+    episode.indexNumber?.let { "E$it" },
+).joinToString(" ").ifEmpty { episode.name }
 
 @Composable
 private fun NextUpRow(episode: Item) {
@@ -266,94 +368,8 @@ private fun SimilarRow(item: Item, nav: Navigator) {
     Column(Modifier.padding(bottom = 30.dp)) {
         CarouselRow("More Like This") {
             items(similar, key = { it.id }) { other ->
-                PosterCard(other, onClick = { nav.push(Route.Detail(other.id, other)) }, title = other.name, subtitle = other.productionYear?.toString())
+                PosterCard(other, onClick = { nav.open(other) }, title = other.name, subtitle = other.productionYear?.toString())
             }
-        }
-    }
-}
-
-// MARK: Season
-
-@Composable
-fun SeasonScreen(route: Route.Season, nav: Navigator, bottomInset: Dp) {
-    val graph = LocalGraph.current
-    val images = LocalImages.current
-    var seasonId by rememberSaveable { mutableStateOf(route.seasonId) }
-    var seasonName by rememberSaveable { mutableStateOf(route.name) }
-    val seasons = rememberLoad("seasons:${route.seriesId}", ITEM_TTL) { graph.api.seasons(route.seriesId) }.value.data.orEmpty()
-    val episodesLoad by rememberLoad("episodes:${route.seriesId}:$seasonId", ITEM_TTL) { graph.api.episodes(route.seriesId, seasonId) }
-    val thumbPx = 132.dp.px()
-
-    Column(Modifier.fillMaxSize()) {
-        TopBar(seasonName) { nav.pop() }
-        val episodes = episodesLoad.data
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = LocalLayout.current.centered(900.dp), end = LocalLayout.current.centered(900.dp), top = 8.dp, bottom = bottomInset + 40.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (seasons.size > 1) {
-                item("seasons") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 10.dp)) {
-                        items(seasons, key = { it.id }) { season ->
-                            val selected = season.id == seasonId
-                            val chip = Modifier.height(34.dp).pressable {
-                                seasonId = season.id
-                                seasonName = season.name
-                            }
-                            if (selected) {
-                                Box(chip.clip(FF.Pill).background(FF.Text).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                                    Text(season.name, color = FF.OnLight, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                }
-                            } else {
-                                Glass(chip, shape = FF.Pill, style = GlassStyle.Clear, contentAlignment = Alignment.Center) {
-                                    Text(season.name, Modifier.padding(horizontal = 14.dp), color = FF.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            when {
-                episodes == null && episodesLoad.error == null -> item("loading") { CenterSpinner(Modifier.padding(top = 60.dp)) }
-                episodes == null -> item("error") { ErrorCard("Couldn't load episodes: ${episodesLoad.error}") }
-                episodes.isEmpty() -> item("empty") { Text("No episodes in this season.", color = FF.TextDim, modifier = Modifier.padding(top = 60.dp)) }
-                else -> items(episodes, key = { it.id }) { episode ->
-                    EpisodeRow(episode, images.primary(episode, thumbPx)) { graph.playback.open(episode) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EpisodeRow(episode: Item, thumb: String?, onClick: () -> Unit) {
-    val played = episode.playedFraction
-    val watched = episode.isWatched
-    Glass(Modifier.fillMaxWidth().pressable(pressedScale = 0.985f, onClick = onClick), shape = FF.ShapeLg) {
-        Row(Modifier.padding(start = 10.dp, top = 10.dp, bottom = 10.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(132.dp, 74.dp).clip(FF.ShapeMd).background(FF.Background)) {
-                Artwork(thumb, Modifier.fillMaxSize())
-                if (played > 0f && !watched) {
-                    ProgressLine(played, Modifier.align(Alignment.BottomCenter), shape = androidx.compose.ui.graphics.RectangleShape)
-                }
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                episode.indexNumber?.let {
-                    Text("EPISODE $it", color = FF.TextDim, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
-                }
-                Text(episode.name, color = FF.Text, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, lineHeight = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
-                    formatRuntime(episode.runTimeTicks) + if (watched) "  ·  Watched" else "",
-                    color = FF.TextDim, fontSize = 12.sp,
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            Icon(
-                if (watched) Lucide.CheckCircle else Lucide.PlayCircle, null, Modifier.size(26.dp),
-                tint = if (watched) FF.TextDim else FF.Text,
-            )
         }
     }
 }

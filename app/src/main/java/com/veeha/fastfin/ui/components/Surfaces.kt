@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -40,40 +41,36 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veeha.fastfin.ui.theme.FF
 
-/** `Regular` is the frosted default; `Clear` is the lighter variant Apple
- * uses over media (the player HUD). */
-enum class GlassStyle { Regular, Clear }
+/** `Raised` is a solid panel for chrome on the app background; `Overlay`
+ * is the dark disc used for controls laid over artwork and video. */
+enum class PanelStyle { Raised, Overlay }
 
-private val RegularFill = Color(0xC81D1D24)
-private val ClearFill = Color(0x3C0E0E12)
-/** Specular sheen along the top edge, what iOS draws on real Liquid Glass. */
-private val Sheen = Brush.verticalGradient(listOf(Color(0x17FFFFFF), Color.Transparent))
+/** Light from above: the top of a raised panel is a shade lighter. */
+private val PanelFill = Brush.verticalGradient(listOf(FF.PanelTop, FF.Panel))
 
 /**
- * The one surface every piece of chrome is built on, matching the iOS
- * build's blur fallback: a translucent tint, a top sheen, a hairline rim.
- *
- * Deliberately no live backdrop blur. Blurring whatever scrolls underneath
- * means re-rendering it every frame, and a SurfaceView video cannot be
- * sampled at all. Flat translucency costs nothing.
+ * The one surface every piece of chrome is built on. Opaque on purpose:
+ * Android has no system glass, and a translucent tint over busy artwork
+ * reads as muddy rather than glassy. Raised panels get a soft top-lit
+ * gradient and an opaque hairline edge; overlays are a plain dark disc.
  */
-fun Modifier.glass(shape: Shape, style: GlassStyle = GlassStyle.Regular, tint: Color? = null): Modifier =
-    this
-        .clip(shape)
-        .background(tint ?: if (style == GlassStyle.Regular) RegularFill else ClearFill)
-        .background(Sheen)
-        .border(Dp.Hairline, FF.GlassRim, shape)
+fun Modifier.panel(shape: Shape, style: PanelStyle = PanelStyle.Raised, tint: Color? = null): Modifier =
+    when {
+        tint != null -> this.clip(shape).background(tint)
+        style == PanelStyle.Overlay -> this.clip(shape).background(FF.Overlay)
+        else -> this.clip(shape).background(PanelFill).border(1.dp, FF.Rim, shape)
+    }
 
 @Composable
-fun Glass(
+fun Panel(
     modifier: Modifier = Modifier,
     shape: Shape = FF.ShapeLg,
-    style: GlassStyle = GlassStyle.Regular,
+    style: PanelStyle = PanelStyle.Raised,
     tint: Color? = null,
     contentAlignment: Alignment = Alignment.TopStart,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
-    Box(modifier.glass(shape, style, tint), contentAlignment = contentAlignment, content = content)
+    Box(modifier.panel(shape, style, tint), contentAlignment = contentAlignment, content = content)
 }
 
 /**
@@ -88,6 +85,9 @@ fun Modifier.pressable(
     haptic: Boolean = false,
     onClick: () -> Unit,
 ): Modifier = composed {
+    // The click lambda changes as the screen recomposes (a sign-in button's
+    // fields fill in). Always call the latest one, never the first captured.
+    val currentOnClick by rememberUpdatedState(onClick)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) pressedScale else 1f, spring(dampingRatio = 0.7f, stiffness = 900f), label = "press")
@@ -99,19 +99,19 @@ fun Modifier.pressable(
         }
         .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = role) {
             if (haptic) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-            onClick()
+            currentOnClick()
         }
 }
 
-/** Circular glass icon button: back, info, search, player chrome. */
+/** Round icon button: back, info, search, player chrome. */
 @Composable
-fun GlassButton(
+fun RoundButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     diameter: Dp = 44.dp,
-    style: GlassStyle = GlassStyle.Regular,
+    style: PanelStyle = PanelStyle.Raised,
     iconSize: Dp = diameter * 0.42f,
     iconTint: Color = FF.Text,
     enabled: Boolean = true,
@@ -122,7 +122,7 @@ fun GlassButton(
             .size(diameter)
             .graphicsLayer { alpha = if (enabled) 1f else 0.4f }
             .pressable(enabled = enabled, pressedScale = 0.94f, haptic = true, onClick = onClick)
-            .glass(CircleShape, style)
+            .panel(CircleShape, style)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
@@ -130,9 +130,9 @@ fun GlassButton(
     }
 }
 
-/** Capsule button. `prominent` is the white Play button; otherwise glass. */
+/** Capsule button. `prominent` is the white Play button; otherwise a raised panel. */
 @Composable
-fun GlassPillButton(
+fun PillButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -145,7 +145,7 @@ fun GlassPillButton(
         modifier
             .height(height)
             .pressable(haptic = true, onClick = onClick)
-            .then(if (prominent) Modifier.clip(FF.Pill).background(FF.Text) else Modifier.glass(FF.Pill))
+            .then(if (prominent) Modifier.clip(FF.Pill).background(FF.Text) else Modifier.panel(FF.Pill))
             .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,

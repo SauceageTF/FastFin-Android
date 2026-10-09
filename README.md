@@ -1,9 +1,10 @@
 # FastFin for Android
 
 A native Jellyfin client: Kotlin, Jetpack Compose and Media3/ExoPlayer. It
-reproduces the FastFin iOS design (dark glass chrome, the poster hero, shelves,
-the glass player HUD) and adds a mini player. The engineering follows the
-rules Spotifast uses to stay small and fast.
+follows the FastFin iOS layout (the poster hero, shelves, the cinematic player
+HUD) with solid dark surfaces in place of the iOS glass, and adds a
+mini player. The engineering follows the rules Spotifast uses to stay small
+and fast.
 
 ## Build
 
@@ -20,7 +21,7 @@ publishing anywhere. Requires JDK 17–21 (Gradle 8.14 does not run on JDK 25).
 ## What came from where
 
 **From FastFin iOS:** the design tokens (`ui/theme/Theme.kt` is `lib/theme.ts`),
-the Glass primitives, Hero, CarouselRow, PosterCard, ContinueWatchingCard, the
+the surface primitives (solid panels on Android), Hero, CarouselRow, PosterCard, ContinueWatchingCard, the
 screens and their layout, the Jellyfin client and auth header, the
 PlaybackInfo negotiation (`getPlaybackSource` → `Negotiator`), the hand-built
 H.264 fallback, the player HUD, and the playback reporting that keeps Continue

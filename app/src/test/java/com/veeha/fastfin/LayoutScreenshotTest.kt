@@ -140,7 +140,7 @@ class LayoutScreenshotTest(private val name: String, private val device: DeviceC
                         title = "Severance", subtitle = "E4 · The You You Are", hdr = "Dolby Vision",
                         ready = true, isPlaying = true, scrubbing = false,
                         position = { 754_000 }, buffered = { 1_400_000 }, durationMs = 3_120_000,
-                        pipSupported = true, centered = centered,
+                        pipSupported = true, centered = centered, transcoding = centered,
                         onCollapse = {}, onClose = {}, onPip = {}, onSkip = {}, onTogglePlay = {}, onScrub = {}, onScrubEnd = {},
                         trackMenu = { TrackChip("English EAC3  ·  Subtitles off", {}) },
                     )

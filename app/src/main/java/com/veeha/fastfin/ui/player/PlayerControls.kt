@@ -76,21 +76,24 @@ private val Clock = TextStyle(fontSize = 12.sp, fontFeatureSettings = "tnum", fo
  * it, instead of words tacked onto the end of a subtitle line.
  */
 @Composable
-internal fun HdrBadge(label: String, modifier: Modifier = Modifier) {
+internal fun HdrBadge(label: String, modifier: Modifier = Modifier, color: Color = FF.Text, rim: Color = Color(0xB3FFFFFF)) {
     Box(
         modifier
-            .border(1.dp, Color(0xB3FFFFFF), RoundedCornerShape(4.dp))
+            .border(1.dp, rim, RoundedCornerShape(4.dp))
             .padding(horizontal = 5.dp, vertical = 2.5.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label.uppercase(), color = FF.Text, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.4.sp, style = tight(9.sp), maxLines = 1)
+        Text(label.uppercase(), color = color, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.4.sp, style = tight(9.sp), maxLines = 1)
     }
 }
 
-/** Subtitle line with the HDR badge centred against it. */
+/** Amber: the server is re-encoding this stream rather than sending the file. */
+private val TranscodeColor = Color(0xFFFFB547)
+
+/** Subtitle line with the HDR and transcoding badges centred against it. */
 @Composable
-internal fun SubtitleWithBadge(subtitle: String?, hdr: String?, color: Color, size: TextUnit) {
-    if (subtitle == null && hdr == null) return
+internal fun SubtitleWithBadge(subtitle: String?, hdr: String?, transcoding: Boolean, color: Color, size: TextUnit) {
+    if (subtitle == null && hdr == null && !transcoding) return
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (subtitle != null) {
             Text(
@@ -99,6 +102,7 @@ internal fun SubtitleWithBadge(subtitle: String?, hdr: String?, color: Color, si
             )
         }
         if (hdr != null) HdrBadge(hdr)
+        if (transcoding) HdrBadge("Transcoding", color = TranscodeColor, rim = TranscodeColor.copy(alpha = 0.7f))
     }
 }
 
@@ -170,6 +174,8 @@ internal fun PlayerControls(
     title: String,
     subtitle: String?,
     hdr: String?,
+    /** The server is re-encoding the stream (not direct play or remux). */
+    transcoding: Boolean = false,
     ready: Boolean,
     isPlaying: Boolean,
     position: () -> Long,
@@ -204,7 +210,7 @@ internal fun PlayerControls(
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     Text(title, color = FF.Text, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp, style = tight(m.title), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    SubtitleWithBadge(subtitle, hdr, FF.TextSecondary, m.subtitle)
+                    SubtitleWithBadge(subtitle, hdr, transcoding, FF.TextSecondary, m.subtitle)
                 }
                 if (pipSupported) BareIconButton(Lucide.PictureInPicture, "Picture in Picture", onPip, iconSize = m.icon, touch = m.touch)
                 BareIconButton(Lucide.Close, "Close player", onClose, iconSize = m.icon, touch = m.touch)
@@ -267,7 +273,7 @@ internal fun BufferingIndicator(modifier: Modifier = Modifier) {
 
 /**
  * A large centre control: the icon on a soft dark disc so it stays legible
- * over bright scenes without the weight of a glass bubble.
+ * over bright scenes without the weight of a filled button.
  */
 @Composable
 private fun CenterButton(

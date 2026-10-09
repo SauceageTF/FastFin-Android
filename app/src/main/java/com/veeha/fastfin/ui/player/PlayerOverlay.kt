@@ -59,15 +59,16 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.veeha.fastfin.data.TICKS_PER_MS
 import com.veeha.fastfin.data.formatClock
 import com.veeha.fastfin.playback.Delivery
+import com.veeha.fastfin.playback.PlayMethod
 import com.veeha.fastfin.playback.PlaybackManager
 import com.veeha.fastfin.playback.PlaybackSource
 import com.veeha.fastfin.playback.PlayerUi
 import com.veeha.fastfin.ui.LocalGraph
 import com.veeha.fastfin.ui.LocalPip
 import com.veeha.fastfin.data.PlayerLayout
-import com.veeha.fastfin.ui.components.Glass
-import com.veeha.fastfin.ui.components.GlassButton
-import com.veeha.fastfin.ui.components.GlassStyle
+import com.veeha.fastfin.ui.components.Panel
+import com.veeha.fastfin.ui.components.RoundButton
+import com.veeha.fastfin.ui.components.PanelStyle
 import com.veeha.fastfin.ui.components.Lucide
 import com.veeha.fastfin.ui.components.pressable
 import com.veeha.fastfin.ui.theme.FF
@@ -78,7 +79,7 @@ import kotlinx.coroutines.delay
 private const val CONTROLS_TIMEOUT_MS = 4_000L
 
 /**
- * The full-screen HUD, ported from the iOS glass player: close, title, PiP
+ * The full-screen HUD, ported from the iOS player: close, title, PiP
  * and track menu along the top; ±10 s and play/pause in the middle; time and
  * scrubber at the bottom. Hides itself after four seconds of playback.
  *
@@ -160,9 +161,9 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
             }
     ) {
         if (skipFlash != 0) {
-            Glass(
+            Panel(
                 Modifier.align(if (skipFlash > 0) Alignment.CenterEnd else Alignment.CenterStart).padding(horizontal = 56.dp),
-                shape = FF.Pill, style = GlassStyle.Clear,
+                shape = FF.Pill, style = PanelStyle.Overlay,
             ) {
                 Text(if (skipFlash > 0) "+10s" else "−10s", Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = FF.Text, fontWeight = FontWeight.Bold)
             }
@@ -179,6 +180,7 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
                 title = ui.item.seriesName ?: ui.item.name,
                 subtitle = subtitleFor(ui.item),
                 hdr = ui.source?.hdr,
+                transcoding = ui.source?.playMethod == PlayMethod.Transcode,
                 ready = ui.source != null,
                 isPlaying = isPlaying,
                 position = { scrubMs ?: positionMs },
@@ -216,7 +218,7 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
         }
 
         ui.notice?.let {
-            Glass(Modifier.align(Alignment.BottomCenter).padding(bottom = 132.dp), shape = FF.Pill) {
+            Panel(Modifier.align(Alignment.BottomCenter).padding(bottom = 132.dp), shape = FF.Pill) {
                 Text(it, Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = FF.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
@@ -243,7 +245,7 @@ private fun TrackMenu(playback: PlaybackManager, source: PlaybackSource?, open: 
                     }
                 }
                 if (source.subtitleTracks.isNotEmpty()) {
-                    HorizontalDivider(color = FF.GlassRim)
+                    HorizontalDivider(color = FF.Rim)
                     MenuHeader("Subtitles")
                     MenuOption("Off", source.selectedSubtitle == null) {
                         onOpen(false)
@@ -257,7 +259,7 @@ private fun TrackMenu(playback: PlaybackManager, source: PlaybackSource?, open: 
                         }
                     }
                 }
-                HorizontalDivider(color = FF.GlassRim)
+                HorizontalDivider(color = FF.Rim)
                 Text(
                     source.summary, Modifier.padding(horizontal = 16.dp, vertical = 10.dp).widthIn(max = 280.dp),
                     color = FF.TextDim, fontSize = 11.5.sp, lineHeight = 15.sp,
@@ -291,7 +293,7 @@ private fun ErrorOverlay(playback: PlaybackManager, ui: PlayerUi) {
         Modifier.fillMaxSize().background(Color(0x99000000)).windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Glass(Modifier.widthIn(max = 440.dp).fillMaxWidth(), shape = FF.ShapeXl) {
+        Panel(Modifier.widthIn(max = 440.dp).fillMaxWidth(), shape = FF.ShapeXl) {
             Column(
                 Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -305,7 +307,7 @@ private fun ErrorOverlay(playback: PlaybackManager, ui: PlayerUi) {
                 Text("item ${ui.item.id.take(8)}", Modifier.padding(top = 8.dp), color = FF.TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                 Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(
-                        Modifier.height(42.dp).pressable { playback.close() }.background(FF.GlassFillStrong, FF.Pill).padding(horizontal = 22.dp),
+                        Modifier.height(42.dp).pressable { playback.close() }.background(FF.Selected, FF.Pill).padding(horizontal = 22.dp),
                         contentAlignment = Alignment.Center,
                     ) { Text("Close", color = FF.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
                     Box(

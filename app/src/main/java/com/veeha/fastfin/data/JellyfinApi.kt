@@ -24,7 +24,10 @@ import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class ApiException(path: String, val code: Int) : IOException("$path failed: HTTP $code")
+/** A failed API call. `detail` is the server's own explanation (Jellyfin answers
+ * 400s with a problem-details body naming the field it rejected). */
+class ApiException(path: String, val code: Int, val detail: String? = null) :
+    IOException("$path failed: HTTP $code" + (detail?.let { " — $it" } ?: ""))
 
 /** Suspends on OkHttp's own dispatcher; cancelling the coroutine cancels the call. */
 suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
@@ -62,7 +65,7 @@ class JellyfinApi(private val http: OkHttpClient, private val sessions: SessionS
         val response = http.newCall(request).await()
         return withContext(Dispatchers.IO) {
             response.use {
-                if (!it.isSuccessful) throw ApiException(request.url.encodedPath, it.code)
+                if (!it.isSuccessful) throw ApiException(request.url.encodedPath, it.code, errorDetail(it))
                 AppJson.decodeFromStream(strategy, it.body!!.byteStream())
             }
         }
@@ -93,15 +96,32 @@ class JellyfinApi(private val http: OkHttpClient, private val sessions: SessionS
     ).items
 
     /** One page of a library, A to Z, optionally filtered server-side. */
-    suspend fun items(parentId: String, startIndex: Int, limit: Int, searchTerm: String?): Page<Item> = get(
+    suspend fun items(parentId: String, startIndex: Int, limit: Int, query: LibraryQuery = LibraryQuery()): Page<Item> = get(
         "/Items",
         LIST + mapOf(
             "userId" to userId, "parentId" to parentId, "recursive" to true,
-            "includeItemTypes" to "Movie,Series", "sortBy" to "SortName", "sortOrder" to "Ascending",
-            "startIndex" to startIndex, "limit" to limit, "searchTerm" to searchTerm,
+            "includeItemTypes" to "Movie,Series", "sortBy" to query.sort.sortBy,
+            "sortOrder" to if (query.descending) "Descending" else "Ascending",
+            "filters" to query.filters, "genres" to query.genre, "seriesStatus" to query.seriesStatus,
+            "startIndex" to startIndex, "limit" to limit, "searchTerm" to query.search,
             "enableTotalRecordCount" to true,
         ),
     )
+
+    /** How many films and shows a library holds: a count, no items. */
+    suspend fun itemCount(parentId: String): Int = get<Page<Item>>(
+        "/Items",
+        mapOf(
+            "userId" to userId, "parentId" to parentId, "recursive" to true,
+            "includeItemTypes" to "Movie,Series", "limit" to 0, "enableTotalRecordCount" to true,
+        ),
+    ).totalRecordCount
+
+    /** Genres that actually occur in a library, for its filter. */
+    suspend fun genres(parentId: String): List<String> = get<Page<Item>>(
+        "/Genres",
+        mapOf("userId" to userId, "parentId" to parentId, "sortBy" to "SortName", "enableTotalRecordCount" to false),
+    ).items.map { it.name }.filter { it.isNotBlank() }
 
     suspend fun search(term: String, limit: Int = 50): List<Item> = get<Page<Item>>(
         "/Items",
@@ -177,3 +197,24 @@ class JellyfinApi(private val http: OkHttpClient, private val sessions: SessionS
         )
     }
 }
+
+/** The useful part of an error body: ProblemDetails title and field errors,
+ * or the first line of plain text. Bounded, and never includes the request. */
+private fun errorDetail(response: Response): String? = runCatching {
+    val text = response.body?.string()?.trim().orEmpty()
+    if (text.isEmpty()) return null
+    val json = runCatching { AppJson.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject }.getOrNull()
+    if (json != null) {
+        val title = (json["title"] ?: json["Title"])?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+        val errors = (json["errors"] ?: json["Errors"]) as? kotlinx.serialization.json.JsonObject
+        val fields = errors?.entries?.joinToString("; ") { (field, messages) ->
+            val list = (messages as? kotlinx.serialization.json.JsonArray)?.joinToString(" ") {
+                (it as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+            } ?: messages.toString()
+            "$field: $list"
+        }
+        listOfNotNull(title, fields).joinToString(" · ").ifEmpty { text }
+    } else {
+        text.lineSequence().first()
+    }.take(400)
+}.getOrNull()

@@ -39,8 +39,10 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -50,7 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.veeha.fastfin.AppGraph
 import com.veeha.fastfin.data.ImageUrls
-import com.veeha.fastfin.ui.components.Glass
+import com.veeha.fastfin.ui.components.Panel
 import com.veeha.fastfin.ui.components.Lucide
 import com.veeha.fastfin.ui.components.pressable
 import com.veeha.fastfin.ui.nav.Navigator
@@ -63,7 +65,6 @@ import com.veeha.fastfin.ui.screens.LibraryGridScreen
 import com.veeha.fastfin.ui.screens.LibraryScreen
 import com.veeha.fastfin.ui.screens.LoginScreen
 import com.veeha.fastfin.ui.screens.SearchScreen
-import com.veeha.fastfin.ui.screens.SeasonScreen
 import com.veeha.fastfin.ui.screens.SettingsScreen
 import com.veeha.fastfin.ui.theme.FF
 import com.veeha.fastfin.ui.theme.FastFinTheme
@@ -168,7 +169,6 @@ private fun MainShell(nav: Navigator, inPip: Boolean) {
                         when (val route = entry.route) {
                             is Route.Detail -> ItemDetailScreen(route, nav, contentBottom)
                             is Route.LibraryGrid -> LibraryGridScreen(route, nav, contentBottom)
-                            is Route.Season -> SeasonScreen(route, nav, contentBottom)
                         }
                     }
                 }
@@ -191,8 +191,8 @@ private fun MainShell(nav: Navigator, inPip: Boolean) {
 private val BottomScrim = Brush.verticalGradient(listOf(Color.Transparent, Color(0xE60A0A0E)))
 private val TopScrim = Brush.verticalGradient(listOf(Color(0xD90A0A0E), Color.Transparent))
 
-/** Phones: the iOS 26 floating tab bar, a glass capsule for the tabs and a
- * separate glass circle for Search. Capped in width so a portrait tablet
+/** Phones: a floating tab bar, a solid capsule for the tabs and a separate
+ * circle for Search, lifted off the content by a soft shadow. Capped in width so a portrait tablet
  * doesn't stretch it edge to edge. */
 @Composable
 internal fun BottomTabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
@@ -209,7 +209,7 @@ internal fun BottomTabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modi
                 .height(TabBarHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Glass(Modifier.weight(1f).fillMaxHeight(), shape = FF.Pill) {
+            Panel(Modifier.weight(1f).fillMaxHeight().floating(FF.Pill), shape = FF.Pill) {
                 Row(Modifier.fillMaxSize().padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for ((tab, icon) in TABS) {
                         StackedTabItem(tab, icon, selected == tab, accent, onSelect, Modifier.weight(1f))
@@ -237,7 +237,7 @@ internal fun TopTabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifie
             Modifier.statusBarsPadding().padding(top = 8.dp, bottom = 16.dp).height(TopTabBarHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Glass(Modifier.fillMaxHeight(), shape = FF.Pill) {
+            Panel(Modifier.fillMaxHeight().floating(FF.Pill), shape = FF.Pill) {
                 Row(Modifier.fillMaxHeight().padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for ((tab, icon) in TABS) InlineTabItem(tab, icon, selected == tab, accent, onSelect)
                 }
@@ -248,14 +248,17 @@ internal fun TopTabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifie
     }
 }
 
+/** A soft dark shadow so floating bars separate from what scrolls beneath. */
+private fun Modifier.floating(shape: Shape) = shadow(14.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+
 private val TABS = listOf(Tab.Home to Lucide.Home, Tab.Library to Lucide.Grid, Tab.Settings to Lucide.Sliders)
 
 @Composable
 private fun SearchCircle(selected: Boolean, accent: Color, size: Dp, onSelect: (Tab) -> Unit) {
-    Glass(
-        Modifier.size(size).pressable(role = Role.Tab) { onSelect(Tab.Search) },
+    Panel(
+        Modifier.size(size).floating(CircleShape).pressable(role = Role.Tab) { onSelect(Tab.Search) },
         shape = CircleShape,
-        tint = if (selected) Color(0xE6303038) else null,
+        tint = if (selected) FF.Selected else null,
         contentAlignment = Alignment.Center,
     ) {
         Icon(Lucide.Search, "Search", Modifier.size(size * 0.36f), tint = if (selected) accent else FF.Text)
@@ -268,7 +271,7 @@ private fun StackedTabItem(tab: Tab, icon: ImageVector, selected: Boolean, accen
         modifier
             .fillMaxHeight()
             .clip(FF.Pill)
-            .background(if (selected) FF.GlassFillStrong else Color.Transparent)
+            .background(if (selected) FF.Selected else Color.Transparent)
             .pressable(role = Role.Tab) { onSelect(tab) },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -285,7 +288,7 @@ private fun InlineTabItem(tab: Tab, icon: ImageVector, selected: Boolean, accent
         Modifier
             .fillMaxHeight()
             .clip(FF.Pill)
-            .background(if (selected) FF.GlassFillStrong else Color.Transparent)
+            .background(if (selected) FF.Selected else Color.Transparent)
             .pressable(role = Role.Tab) { onSelect(tab) }
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,

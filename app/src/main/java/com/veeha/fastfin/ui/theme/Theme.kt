@@ -14,8 +14,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.veeha.fastfin.data.AccentName
 
-/** Tokens ported from the iOS build's lib/theme.ts. Dark-first: glass always
- * sits on a dark ground. */
+/** Tokens ported from the iOS build's lib/theme.ts, with solid surfaces in
+ * place of the iOS translucency: Android has no system glass, and faked
+ * glass just looks muddy. Dark-first. */
 object FF {
     val Background = Color(0xFF0A0A0E)
     val Elevated = Color(0xFF18181C)
@@ -26,10 +27,18 @@ object FF {
     val Danger = Color(0xFFFF5C5C)
     val Border = Color(0xFF2C2C30)
 
-    /** Hairline rim on glass surfaces (white 14%). */
-    val GlassRim = Color(0x24FFFFFF)
-    val GlassFill = Color(0x14FFFFFF)
-    val GlassFillStrong = Color(0x29FFFFFF)
+    /** Raised panels: cards, bars, menus. Opaque, a step above Elevated. */
+    val Panel = Color(0xFF1B1B21)
+    /** Top of the panel gradient, a hint of light from above. */
+    val PanelTop = Color(0xFF222229)
+    /** Opaque hairline edge on panels. */
+    val Rim = Color(0xFF2D2D35)
+    /** Text fields and unselected chips. */
+    val Field = Color(0xFF24242B)
+    /** Selected tab or option behind its label. */
+    val Selected = Color(0xFF34343D)
+    /** Controls laid over artwork or video: a dark disc, not a frosted one. */
+    val Overlay = Color(0xB80B0B0F)
 
     /** Dark text on the white "prominent" buttons. */
     val OnLight = Color(0xFF141018)
@@ -87,7 +96,7 @@ fun FastFinTheme(accent: AccentName, content: @Composable () -> Unit) {
         surfaceContainer = FF.Hover,
         surfaceContainerHigh = FF.Hover,
         outline = FF.Border,
-        outlineVariant = FF.GlassRim,
+        outlineVariant = FF.Rim,
         error = FF.Danger,
     )
     MaterialTheme(colorScheme = scheme, typography = AppTypography) {

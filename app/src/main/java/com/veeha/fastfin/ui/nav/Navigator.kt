@@ -12,9 +12,13 @@ import com.veeha.fastfin.data.Item
 sealed interface Route {
     /** `seed` is the item as the list already knows it: the page draws its
      * header from it instantly while the full item loads. */
-    data class Detail(val id: String, val seed: Item? = null) : Route
-    data class LibraryGrid(val id: String, val name: String) : Route
-    data class Season(val seriesId: String, val seasonId: String, val name: String) : Route
+    data class Detail(
+        val id: String,
+        val seed: Item? = null,
+        /** For a show: the season whose episodes to show first. */
+        val seasonId: String? = null,
+    ) : Route
+    data class LibraryGrid(val id: String, val name: String, val collectionType: String? = null) : Route
 }
 
 enum class Tab(val label: String) { Home("Home"), Library("Library"), Settings("Settings"), Search("Search") }
@@ -54,5 +58,22 @@ class Navigator {
     fun select(tab: Tab) {
         lastWasPop = false
         this.tab = tab
+    }
+
+    /**
+     * Where tapping a card goes. Jellyfin's "latest" shelves group new
+     * episodes into seasons (or show a lone new episode), but a card titled
+     * with the show's name should open the show, on that season's episodes.
+     * Playing an episode directly is what Continue Watching and the show
+     * page's episode carousel are for.
+     */
+    fun open(item: Item) {
+        val seriesId = item.seriesId
+        when {
+            seriesId == null -> push(Route.Detail(item.id, item))
+            item.type == "Season" -> push(Route.Detail(seriesId, seasonId = item.id))
+            item.type == "Episode" -> push(Route.Detail(seriesId, seasonId = item.seasonId))
+            else -> push(Route.Detail(item.id, item))
+        }
     }
 }

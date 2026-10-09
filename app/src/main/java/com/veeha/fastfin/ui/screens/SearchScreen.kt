@@ -37,7 +37,6 @@ import com.veeha.fastfin.ui.components.Lucide
 import com.veeha.fastfin.ui.components.PosterCard
 import com.veeha.fastfin.ui.components.SearchField
 import com.veeha.fastfin.ui.nav.Navigator
-import com.veeha.fastfin.ui.nav.Route
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
@@ -107,7 +106,7 @@ fun SearchScreen(nav: Navigator, bottomInset: Dp) {
         ) {
             items(results, key = { it.id }, contentType = { "poster" }) { item ->
                 PosterCard(
-                    item, onClick = { nav.push(Route.Detail(item.id, item)) }, width = null,
+                    item, onClick = { nav.open(item) }, width = null,
                     title = item.name, subtitle = item.productionYear?.toString(), imageWidth = columnWidth,
                 )
             }

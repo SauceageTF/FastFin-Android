@@ -53,7 +53,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veeha.fastfin.ui.LocalGraph
-import com.veeha.fastfin.ui.components.Glass
+import com.veeha.fastfin.ui.components.Panel
 import com.veeha.fastfin.ui.components.Lucide
 import com.veeha.fastfin.ui.components.pressable
 import com.veeha.fastfin.ui.theme.FF
@@ -77,7 +77,14 @@ fun LoginScreen() {
 
     val canSubmit = server.isNotBlank() && username.isNotBlank() && !signingIn
     fun submit() {
-        if (!canSubmit) return
+        // Re-read the fields at tap time. A value captured during an earlier
+        // composition (empty fields) is exactly what made the button ignore taps.
+        if (signingIn) return
+        // Say what is missing instead of silently ignoring the tap.
+        when {
+            server.isBlank() -> { error = "Enter your server address."; return }
+            username.isBlank() -> { error = "Enter your username."; return }
+        }
         signingIn = true
         error = null
         scope.launch {
@@ -95,7 +102,7 @@ fun LoginScreen() {
             .fillMaxSize()
             .background(FF.Background)
             .drawBehind {
-                // Soft ember bloom and two orbs for the glass card to sit on.
+                // Soft ember bloom and two orbs behind the sign-in card.
                 drawRect(Brush.linearGradient(listOf(Bloom, FF.Background, FF.Background), Offset(size.width, 0f), Offset(size.width * 0.2f, size.height * 0.9f)))
                 val a = Offset(size.width + 90.dp.toPx() - 160.dp.toPx(), 80.dp.toPx())
                 drawCircle(Brush.radialGradient(listOf(Color(0x47FF5A1F), Color.Transparent), a, 160.dp.toPx()), 160.dp.toPx(), a)
@@ -113,7 +120,7 @@ fun LoginScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Glass(Modifier.fillMaxWidth().widthIn(max = 380.dp), shape = FF.ShapeXl) {
+            Panel(Modifier.fillMaxWidth().widthIn(max = 380.dp), shape = FF.ShapeXl) {
                 Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         Modifier
@@ -132,11 +139,11 @@ fun LoginScreen() {
                     )
 
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Field("Server", server, { server = it }, "192.168.1.20:8096", KeyboardType.Uri, ImeAction.Next, null)
+                        Field("Server", server, { server = it }, "e.g. 192.168.1.20:8096", KeyboardType.Uri, ImeAction.Next, null)
                         Field("Username", username, { username = it }, "Username", KeyboardType.Text, ImeAction.Next, ContentType.Username)
                         Field(
                             "Password", password, { password = it }, "Password", KeyboardType.Password, ImeAction.Go,
-                            ContentType.Password, secret = true, onGo = ::submit,
+                            ContentType.Password, secret = true, onGo = { submit() },
                         )
                     }
 
@@ -149,7 +156,7 @@ fun LoginScreen() {
                             .padding(top = 20.dp)
                             .fillMaxWidth()
                             .height(50.dp)
-                            .pressable(enabled = canSubmit, pressedScale = 0.98f, haptic = true, onClick = ::submit)
+                            .pressable(enabled = !signingIn, pressedScale = 0.98f, haptic = true) { submit() }
                             .clip(FF.Pill)
                             .background(if (canSubmit) FF.Text else FF.Text.copy(alpha = 0.55f)),
                         contentAlignment = Alignment.Center,
@@ -202,8 +209,8 @@ private fun Field(
                         .fillMaxWidth()
                         .height(46.dp)
                         .clip(shape)
-                        .background(FF.GlassFill)
-                        .border(Dp.Hairline, FF.GlassRim, shape)
+                        .background(FF.Field)
+                        .border(Dp.Hairline, FF.Rim, shape)
                         .padding(horizontal = 14.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {

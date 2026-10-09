@@ -67,6 +67,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.SubtitleView
 import com.veeha.fastfin.data.Item
 import com.veeha.fastfin.data.episodeLabel
+import com.veeha.fastfin.playback.PlayMethod
 import com.veeha.fastfin.playback.PlaybackManager
 import com.veeha.fastfin.playback.PlayerUi
 import com.veeha.fastfin.ui.LocalGraph
@@ -168,7 +169,7 @@ fun PlayerHost(miniBottom: Dp, inPip: Boolean, miniWidth: Dp? = null) {
                 .graphicsLayer { alpha = 1f - progress.value }
                 .clip(MiniShape)
                 .background(MiniBackground)
-                .border(Dp.Hairline, FF.GlassRim, MiniShape)
+                .border(Dp.Hairline, FF.Rim, MiniShape)
         )
 
         if (player != null) {
@@ -321,7 +322,7 @@ private fun MiniControls(playback: PlaybackManager, ui: PlayerUi, player: ExoPla
         Row(Modifier.fillMaxSize().padding(start = thumbWidth + 6.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(ui.item.seriesName ?: ui.item.name, color = FF.Text, fontWeight = FontWeight.Bold, style = tight(13.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                SubtitleWithBadge(subtitleFor(ui.item), ui.source?.hdr, FF.TextDim, 11.5.sp)
+                SubtitleWithBadge(subtitleFor(ui.item), ui.source?.hdr, ui.source?.playMethod == PlayMethod.Transcode, FF.TextDim, 11.5.sp)
             }
             MiniButton(if (isPlaying) Lucide.Pause else Lucide.Play, if (isPlaying) "Pause" else "Play") { playback.togglePlay() }
             MiniButton(Lucide.Close, "Close player") { playback.close() }

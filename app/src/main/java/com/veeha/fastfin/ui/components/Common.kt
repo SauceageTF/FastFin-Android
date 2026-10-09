@@ -21,6 +21,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.text.HtmlCompat
 import com.veeha.fastfin.ui.theme.FF
 
 @Composable
@@ -53,14 +55,14 @@ fun LargeTitle(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Header for pushed screens: a glass back button and the title. */
+/** Header for pushed screens: a round back button and the title. */
 @Composable
 fun TopBar(title: String, onBack: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().background(FF.Background).statusBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GlassButton(Lucide.ChevronLeft, "Back", onBack, diameter = 40.dp)
+        RoundButton(Lucide.ChevronLeft, "Back", onBack, diameter = 40.dp)
         Spacer(Modifier.width(12.dp))
         Text(
             title, color = FF.Text, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
@@ -72,12 +74,12 @@ fun TopBar(title: String, onBack: () -> Unit) {
 @Composable
 fun ErrorCard(message: String, onRetry: (() -> Unit)? = null) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Glass(Modifier.widthIn(max = 420.dp), shape = FF.ShapeXl) {
+        Panel(Modifier.widthIn(max = 420.dp), shape = FF.ShapeXl) {
             Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(message, color = FF.Danger, textAlign = TextAlign.Center, fontSize = 14.sp)
                 if (onRetry != null) {
                     Spacer(Modifier.height(16.dp))
-                    GlassPillButton("Try Again", onRetry, prominent = true, height = 40.dp)
+                    PillButton("Try Again", onRetry, prominent = true, height = 40.dp)
                 }
             }
         }
@@ -97,7 +99,7 @@ fun EmptyState(icon: ImageVector, title: String, text: String, modifier: Modifie
     }
 }
 
-/** Glass search/filter capsule. */
+/** Panel search/filter capsule. */
 @Composable
 fun SearchField(
     value: String,
@@ -107,7 +109,7 @@ fun SearchField(
     focusRequester: FocusRequester? = null,
     onSearch: () -> Unit = {},
 ) {
-    Glass(modifier.fillMaxWidth().height(46.dp), shape = FF.Pill) {
+    Panel(modifier.fillMaxWidth().height(46.dp), shape = FF.Pill) {
         Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Lucide.Search, null, Modifier.size(17.dp), tint = FF.TextDim)
             Spacer(Modifier.width(10.dp))
@@ -137,4 +139,13 @@ fun SearchField(
             }
         }
     }
+}
+
+/** Jellyfin overviews are sometimes HTML from the metadata provider
+ * ("&mdash;", "<br>"). Shown as plain text with its line breaks; parsed once
+ * per string, and skipped entirely for the usual plain overview. */
+@Composable
+fun rememberPlainText(html: String): String = remember(html) {
+    if ('<' !in html && '&' !in html) html
+    else HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim()
 }

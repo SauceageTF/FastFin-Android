@@ -61,7 +61,7 @@ import com.veeha.fastfin.ui.LocalGraph
 import com.veeha.fastfin.ui.LocalLayout
 import com.veeha.fastfin.ui.LocalTabBarTop
 import com.veeha.fastfin.ui.LocalSession
-import com.veeha.fastfin.ui.components.Glass
+import com.veeha.fastfin.ui.components.Panel
 import com.veeha.fastfin.ui.components.LargeTitle
 import com.veeha.fastfin.ui.components.Lucide
 import com.veeha.fastfin.ui.components.pressable
@@ -218,7 +218,7 @@ fun SettingsScreen(bottomInset: Dp) {
             InfoRow(Lucide.Info, "Version", BuildConfig.VERSION_NAME)
         }
 
-        Glass(
+        Panel(
             Modifier.fillMaxWidth().height(52.dp).pressable(pressedScale = 0.98f) { confirmSignOut = true },
             shape = FF.ShapeLg, contentAlignment = Alignment.Center,
         ) {
@@ -271,7 +271,7 @@ private fun formatBytes(bytes: Long): String = when {
 private fun Section(title: String, footer: String? = null, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title.uppercase(), Modifier.padding(horizontal = 12.dp), color = FF.TextDim, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
-        Glass(Modifier.fillMaxWidth(), shape = FF.ShapeLg) { Column { content() } }
+        Panel(Modifier.fillMaxWidth(), shape = FF.ShapeLg) { Column { content() } }
         if (footer != null) Text(footer, Modifier.padding(horizontal = 12.dp), color = FF.TextDim, fontSize = 12.5.sp, lineHeight = 17.sp)
     }
 }
@@ -291,7 +291,7 @@ private fun InfoRow(icon: ImageVector, label: String, value: String) {
 
 @Composable
 private fun Divider() {
-    Box(Modifier.padding(start = 52.dp).fillMaxWidth().height(0.5.dp).background(FF.GlassRim))
+    Box(Modifier.padding(start = 52.dp).fillMaxWidth().height(0.5.dp).background(FF.Rim))
 }
 
 /** Pill segments, as on iOS: the selected one is a white capsule. */
@@ -306,7 +306,7 @@ private fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, o
                     .height(38.dp)
                     .pressable(role = Role.RadioButton) { onSelect(option) }
                     .clip(FF.Pill)
-                    .background(if (on) FF.Text else FF.GlassFill),
+                    .background(if (on) FF.Text else FF.Field),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(label(option), color = if (on) FF.OnLight else FF.Text, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)

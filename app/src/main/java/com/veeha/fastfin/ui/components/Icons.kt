@@ -25,6 +25,10 @@ object Lucide {
         stroke("M21 4h-7", "M10 4H3", "M21 12h-9", "M8 12H3", "M21 20h-5", "M12 20H3", "M14 2v4", "M8 10v4", "M16 18v4")
     }
     val Search by lazy { stroke(circle(11f, 11f, 8f), "m21 21-4.3-4.3") }
+    val ArrowUp by lazy { stroke("m5 12 7-7 7 7", "M12 19V5") }
+    val ArrowDown by lazy { stroke("M12 5v14", "m19 12-7 7-7-7") }
+    val ArrowUpDown by lazy { stroke("m21 16-4 4-4-4", "M17 20V4", "m3 8 4-4 4 4", "M7 4v16") }
+    val Filter by lazy { stroke("M3 6h18", "M7 12h10", "M10 18h4") }
     val Play by lazy { filled("M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z") }
     val Pause by lazy { filled(rect(14f, 3f, 5f, 18f, 1f), rect(5f, 3f, 5f, 18f, 1f)) }
     val Info by lazy { stroke(circle(12f, 12f, 10f), "M12 16v-4", "M12 8h.01") }

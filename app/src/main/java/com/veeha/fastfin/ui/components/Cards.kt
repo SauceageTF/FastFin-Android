@@ -40,6 +40,7 @@ import coil3.compose.AsyncImage
 import com.veeha.fastfin.data.Item
 import com.veeha.fastfin.data.episodeLabel
 import com.veeha.fastfin.data.formatRuntime
+import com.veeha.fastfin.data.isWatched
 import com.veeha.fastfin.data.playedFraction
 import com.veeha.fastfin.ui.LocalImages
 import com.veeha.fastfin.ui.LocalLayout
@@ -82,7 +83,7 @@ fun ProgressLine(
 
 private val PosterShape = RoundedCornerShape(FF.RadiusMd)
 
-/** 2:3 poster with a hairline rim so it reads as a card on the glass around it. */
+/** 2:3 poster with a hairline rim so dark artwork still reads as a card. */
 @Composable
 fun PosterCard(
     item: Item,
@@ -106,7 +107,7 @@ fun PosterCard(
                 .aspectRatio(2f / 3f)
                 .clip(PosterShape)
                 .background(FF.Elevated)
-                .border(Dp.Hairline, FF.GlassRim, PosterShape),
+                .border(Dp.Hairline, FF.Rim, PosterShape),
         )
         Text(
             title, modifier = Modifier.padding(top = 7.dp), color = FF.Text, fontSize = 12.sp,
@@ -140,13 +141,13 @@ fun ContinueWatchingCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayou
             .pressable(onClick = onClick)
             .clip(FF.ShapeLg)
             .background(FF.Elevated)
-            .border(Dp.Hairline, FF.GlassRim, FF.ShapeLg)
+            .border(Dp.Hairline, FF.Rim, FF.ShapeLg)
     ) {
         Artwork(images.landscape(item, width.px()), Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(CardScrim))
-        Glass(
+        Panel(
             Modifier.align(Alignment.TopEnd).padding(10.dp).size(30.dp),
-            shape = FF.Pill, style = GlassStyle.Clear, contentAlignment = Alignment.Center,
+            shape = FF.Pill, style = PanelStyle.Overlay, contentAlignment = Alignment.Center,
         ) {
             Icon(Lucide.Play, null, Modifier.size(12.dp), tint = FF.Text)
         }
@@ -161,7 +162,7 @@ fun ContinueWatchingCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayou
     }
 }
 
-/** 16:9 episode still with a play badge, for Next Up. */
+/** 16:9 episode still with a play (or watched) badge and progress, for the show page and Next Up. */
 @Composable
 fun EpisodeCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayout.current.landscapeCard) {
     val images = LocalImages.current
@@ -172,14 +173,19 @@ fun EpisodeCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayout.current
                 .height(width * 9f / 16f)
                 .clip(FF.ShapeLg)
                 .background(FF.Elevated)
-                .border(Dp.Hairline, FF.GlassRim, FF.ShapeLg)
+                .border(Dp.Hairline, FF.Rim, FF.ShapeLg)
         ) {
             Artwork(images.primary(item, width.px()), Modifier.fillMaxSize())
-            Glass(
+            val watched = item.isWatched
+            Panel(
                 Modifier.align(Alignment.BottomEnd).padding(10.dp).size(30.dp),
-                shape = FF.Pill, style = GlassStyle.Clear, contentAlignment = Alignment.Center,
+                shape = FF.Pill, style = PanelStyle.Overlay, contentAlignment = Alignment.Center,
             ) {
-                Icon(Lucide.Play, null, Modifier.size(12.dp), tint = FF.Text)
+                if (watched) Icon(Lucide.Check, "Watched", Modifier.size(13.dp), tint = FF.Text)
+                else Icon(Lucide.Play, null, Modifier.size(12.dp), tint = FF.Text)
+            }
+            if (!watched && item.playedFraction > 0f) {
+                ProgressLine(item.playedFraction, Modifier.align(Alignment.BottomCenter), height = 3.dp, track = Color(0x66000000), shape = RectangleShape)
             }
         }
         Text(item.episodeLabel, modifier = Modifier.padding(top = 7.dp), color = FF.Text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

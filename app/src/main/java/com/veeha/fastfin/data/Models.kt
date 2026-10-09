@@ -89,6 +89,12 @@ data class HomeData(
 )
 
 val Item.isSeries: Boolean get() = type == "Series"
+val Item.isSeason: Boolean get() = type == "Season"
+
+/** Things PlaybackInfo can actually stream. Series, seasons, box sets and
+ * folders are containers: asking to play one gets HTTP 400 from Jellyfin. */
+val Item.isPlayable: Boolean get() = type in PLAYABLE_TYPES
+private val PLAYABLE_TYPES = setOf("Movie", "Episode", "Video", "MusicVideo", "Trailer")
 val Item.isEpisode: Boolean get() = type == "Episode"
 val Item.isMovie: Boolean get() = type == "Movie"
 

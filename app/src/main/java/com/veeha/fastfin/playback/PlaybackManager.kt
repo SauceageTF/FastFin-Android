@@ -33,6 +33,7 @@ import com.veeha.fastfin.MainActivity
 import com.veeha.fastfin.data.Item
 import com.veeha.fastfin.data.TICKS_PER_MS
 import com.veeha.fastfin.data.displayTitle
+import com.veeha.fastfin.data.isPlayable
 import com.veeha.fastfin.data.resumeMs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -114,6 +115,10 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
     // MARK: Opening and closing
 
     fun open(item: Item, restart: Boolean = false) {
+        // Containers (series, seasons, box sets) have nothing to stream;
+        // Jellyfin answers PlaybackInfo for them with HTTP 400. Callers route
+        // those to their episode lists, so this is only a safety net.
+        if (!item.isPlayable) return
         val current = _state.value
         if (!restart && current != null && current.item.id == item.id && current.error == null) {
             expand()

@@ -55,25 +55,17 @@ object DeviceProfile {
         }
 
         // Only reached when direct play is impossible (bitrate cap, codec the
-        // device lacks, tone-mapping). fMP4 HLS first so HEVC can be copied
-        // rather than re-encoded; TS H.264 is the universal last resort.
+        // device lacks, tone-mapping). MPEG-TS HLS, with HEVC first so it can
+        // be copied rather than re-encoded. Not fMP4: Jellyfin's ffmpeg writes
+        // fragments with negative composition offsets in version-0 `trun`
+        // boxes, which ExoPlayer rejects ("Top bit not zero"); Jellyfin's own
+        // Android TV client uses TS for the same reason.
         putJsonArray("TranscodingProfiles") {
             addJsonObject {
                 put("Type", "Video")
-                put("Container", "mp4")
+                put("Container", "ts")
                 put("VideoCodec", hlsVideo)
                 put("AudioCodec", hlsAudio)
-                put("Protocol", "hls")
-                put("Context", "Streaming")
-                put("MaxAudioChannels", "6")
-                put("MinSegments", 2)
-                put("BreakOnNonKeyFrames", true)
-            }
-            addJsonObject {
-                put("Type", "Video")
-                put("Container", "ts")
-                put("VideoCodec", "h264")
-                put("AudioCodec", listOf("aac", "mp3", "ac3").filter { it in caps.audioCodecs }.joinToString(","))
                 put("Protocol", "hls")
                 put("Context", "Streaming")
                 put("MaxAudioChannels", "6")

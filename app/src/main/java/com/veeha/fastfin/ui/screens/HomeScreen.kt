@@ -29,7 +29,7 @@ import com.veeha.fastfin.AppGraph
 import com.veeha.fastfin.data.HomeData
 import com.veeha.fastfin.data.Load
 import com.veeha.fastfin.data.Repository
-import com.veeha.fastfin.data.isSeries
+import com.veeha.fastfin.data.isPlayable
 import com.veeha.fastfin.ui.LocalGraph
 import com.veeha.fastfin.ui.LocalSession
 import com.veeha.fastfin.ui.LocalTabBarTop
@@ -95,8 +95,8 @@ fun HomeScreen(nav: Navigator, bottomInset: Dp) {
                         Hero(
                             slides = data.featured,
                             autoAdvance = heroAnimates,
-                            onPrimary = { item -> if (item.isSeries) nav.push(Route.Detail(item.id, item)) else graph.playback.open(item) },
-                            onInfo = { item -> nav.push(Route.Detail(item.id, item)) },
+                            onPrimary = { item -> if (item.isPlayable) graph.playback.open(item) else nav.open(item) },
+                            onInfo = { item -> nav.open(item) },
                             onSearch = { nav.select(Tab.Search) },
                         )
                     }
@@ -124,9 +124,9 @@ fun HomeScreen(nav: Navigator, bottomInset: Dp) {
                     contentType = { "shelf" },
                 ) { library ->
                     Spacer(Modifier.height(30.dp))
-                    CarouselRow("New in ${library.name}", onSeeAll = { nav.push(Route.LibraryGrid(library.id, library.name)) }) {
+                    CarouselRow("New in ${library.name}", onSeeAll = { nav.push(Route.LibraryGrid(library.id, library.name, library.collectionType)) }) {
                         items(data.latest[library.id].orEmpty(), key = { it.id }) { item ->
-                            PosterCard(item, onClick = { nav.push(Route.Detail(item.id, item)) })
+                            PosterCard(item, onClick = { nav.open(item) })
                         }
                     }
                 }
