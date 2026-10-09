@@ -21,6 +21,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -232,9 +233,56 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
         reportStart(item, source)
     }
 
+    /**
+     * Re-attaches the same stream with a different side-loaded subtitle (or
+     * none) at `positionMs`. Same play session, no server round trip; it
+     * resumes in whatever play/pause state it was in.
+     */
+    private fun reloadSource(item: Item, source: PlaybackSource, positionMs: Long) {
+        val player = _player.value ?: return
+        val playWhenReady = player.playWhenReady
+        _state.update { it?.copy(source = source) }
+        tracksApplied = false
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverrides()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .build()
+        player.setMediaItem(mediaItem(item, source), positionMs)
+        player.prepare()
+        player.playWhenReady = playWhenReady
+    }
+
+    /** The URL whose fetch failed: the file, a playlist, a segment or a subtitle. */
+    private fun failingUri(error: PlaybackException): String? {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            if (cause is HttpDataSource.HttpDataSourceException) return cause.dataSpec.uri.toString()
+            cause = cause.cause
+        }
+        return null
+    }
+
+    private fun httpStatus(error: PlaybackException): String? {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) return "HTTP ${cause.responseCode}"
+            cause = cause.cause
+        }
+        return null
+    }
+
+    private fun sameResource(a: String, b: String) = a.substringBefore('?') == b.substringBefore('?')
+
+    /** Path only: queries can carry tokens and never belong in diagnostics. */
+    private fun pathOf(url: String): String = "/" + url.substringBefore('?').substringAfter("://").substringAfter('/', "")
+
     private fun mediaItem(item: Item, source: PlaybackSource): MediaItem {
+        // Only the selected external subtitle is side-loaded. ExoPlayer fetches
+        // every side-loaded file up front and a single failed fetch fails the
+        // whole video; a transcoded episode can list a dozen tracks, each an
+        // ffmpeg extraction on the server. Others are swapped in on demand.
         val subtitles = source.subtitleTracks
-            .filter { it.delivery == Delivery.External && it.deliveryUrl != null }
+            .filter { it.index == source.selectedSubtitle && it.delivery == Delivery.External && it.deliveryUrl != null }
             .map { track ->
                 MediaItem.SubtitleConfiguration.Builder(track.deliveryUrl!!.toUri())
                     .setId(externalId(track.index))
@@ -346,6 +394,19 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
         val source = state.source ?: return
         val player = _player.value ?: return
         val position = player.currentPosition
+        val failedUri = failingUri(error)
+
+        // A subtitle that won't load is not a reason to stop the video: drop it.
+        val badSubtitle = failedUri?.let { uri ->
+            source.subtitleTracks.firstOrNull { it.deliveryUrl != null && sameResource(it.deliveryUrl, uri) }
+        }
+        if (badSubtitle != null && source.selectedSubtitle == badSubtitle.index) {
+            diagnostics += "Subtitle ${badSubtitle.index}: ${error.errorCodeName} · ${httpStatus(error) ?: ""} ${pathOf(failedUri.orEmpty())}"
+            selection = selection.copy(subtitle = SUBTITLES_OFF)
+            reloadSource(state.item, source.copy(selectedSubtitle = null), position)
+            showNotice("Couldn't load ${badSubtitle.title} subtitles")
+            return
+        }
 
         // A network blip mid-film is not a reason to transcode: re-prepare in place.
         val isNetwork = error.errorCode in 2000..2999
@@ -360,8 +421,12 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
 
         loadJob?.cancel()
         loadJob = scope.launch {
-            val probe = graph.api.probe(source.url)
-            diagnostics += "${source.playMethod.name}${if (source.isFallback) " (fallback)" else ""}: ${error.errorCodeName} · $probe"
+            // Probe what actually failed (a playlist, a segment, the file), and
+            // name its path (never its query, which can carry a token).
+            val target = failedUri ?: source.url
+            val probe = graph.api.probe(target)
+            diagnostics += "${source.playMethod.name}${if (source.isFallback) " (fallback)" else ""}: " +
+                "${error.errorCodeName} · ${pathOf(target)} · $probe"
             when {
                 attempt == 0 && source.playMethod == PlayMethod.DirectPlay -> {
                     // The decoder disagreed with what it advertised. Let the
@@ -425,7 +490,13 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
             current?.delivery == Delivery.Encode -> false
             index == null -> disableText()
             track == null -> false
-            track.delivery == Delivery.External -> applyTrack(C.TRACK_TYPE_TEXT, track, source)
+            // Side-loaded on demand: re-attach the same stream with this subtitle,
+            // at the current position. No server round trip, no new transcode.
+            track.delivery == Delivery.External && track.deliveryUrl != null -> {
+                val item = _state.value?.item ?: return
+                reloadSource(item, source.copy(selectedSubtitle = index), _player.value?.currentPosition ?: 0L)
+                true
+            }
             track.delivery == Delivery.Embed && source.playMethod == PlayMethod.DirectPlay -> applyTrack(C.TRACK_TYPE_TEXT, track, source)
             else -> false
         }
