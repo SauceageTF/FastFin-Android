@@ -4,11 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -80,8 +81,12 @@ fun LoginScreen() {
         signingIn = true
         error = null
         scope.launch {
-            error = graph.sessions.signIn(graph.http, server, username, password)
-            signingIn = false
+            try {
+                error = graph.sessions.signIn(graph.http, server, username, password)
+            } finally {
+                // Whatever happened, the button must come back.
+                signingIn = false
+            }
         }
     }
 
@@ -98,8 +103,13 @@ fun LoginScreen() {
                 drawCircle(Brush.radialGradient(listOf(Color(0x262DD4C8), Color.Transparent), b, 130.dp.toPx()), 130.dp.toPx(), b)
             }
     ) {
+        // safeDrawing already includes the keyboard, so the card rises with it
+        // exactly once. heightIn(min) keeps the card centred while still
+        // letting it scroll when the keyboard leaves too little room.
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
+        val viewport = maxHeight
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = viewport).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -149,6 +159,7 @@ fun LoginScreen() {
                     }
                 }
             }
+        }
         }
     }
 }

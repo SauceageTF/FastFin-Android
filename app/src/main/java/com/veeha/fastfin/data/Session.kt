@@ -23,6 +23,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
 
 @Immutable
 data class Session(
@@ -75,6 +76,43 @@ class AuthInterceptor(private val session: () -> Session?) : Interceptor {
     }
 }
 
+/**
+ * Server base URLs to try for what the user typed, in order.
+ *
+ * People paste whatever is in their browser's address bar, so the web
+ * client's path, fragment and query are dropped
+ * ("http://nas:8096/web/#/home.html" becomes "http://nas:8096"); a reverse
+ * proxy prefix like "/jellyfin" is kept. With no scheme, LAN-looking
+ * addresses (IP literals, localhost, .local/.lan/.home, the default port
+ * 8096) try plain HTTP first, since that is what they almost always speak;
+ * anything else tries HTTPS first.
+ */
+internal fun serverCandidates(raw: String): List<String> {
+    var input = raw.trim().substringBefore('#').substringBefore('?')
+    if (input.isEmpty()) return emptyList()
+    val scheme = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://").find(input)?.value?.lowercase()
+    if (scheme != null) input = input.substring(scheme.length)
+    Regex("/web(/|$)", RegexOption.IGNORE_CASE).find(input)?.let { input = input.substring(0, it.range.first) }
+    input = input.trimEnd('/')
+    if (input.isEmpty()) return emptyList()
+    if (scheme != null) return listOf(scheme + input)
+
+    val authority = input.substringBefore('/')
+    val ipv6 = authority.startsWith("[")
+    val host = if (ipv6) authority.substringBefore(']') + "]" else authority.substringBefore(':')
+    val port = if (ipv6) authority.substringAfter("]:", "") else authority.substringAfter(':', "")
+    val lanLike = ipv6 ||
+        Regex("""^\d{1,3}(\.\d{1,3}){3}$""").matches(host) ||
+        host.equals("localhost", ignoreCase = true) ||
+        listOf(".local", ".lan", ".home", ".internal").any { host.endsWith(it, ignoreCase = true) } ||
+        port == "8096"
+    val httpsFirst = port == "8920" || !lanLike
+    return if (httpsFirst) listOf("https://$input", "http://$input") else listOf("http://$input", "https://$input")
+}
+
+@Serializable
+private data class PublicInfo(val id: String = "", val serverName: String = "", val version: String = "")
+
 @Serializable
 private data class AuthUser(val id: String, val name: String = "")
 
@@ -118,51 +156,93 @@ class SessionStore(context: Context, private val secure: SecureStore) {
     }
 
     /** Returns null on success, or a message for the login screen. */
+    /**
+     * Returns null on success, or a message for the login screen. Never
+     * throws: whatever goes wrong, the login screen gets a sentence back.
+     *
+     * Each candidate address is first checked with the anonymous
+     * /System/Info/Public on short timeouts, so a wrong address or scheme
+     * fails in seconds with a specific reason instead of hanging on a long
+     * connect timeout, and only a confirmed Jellyfin server is sent the password.
+     */
     suspend fun signIn(http: OkHttpClient, rawServer: String, username: String, password: String): String? =
         withContext(Dispatchers.IO) {
-            val trimmed = rawServer.trim().trimEnd('/')
-            if (trimmed.isEmpty()) return@withContext "Enter your server address."
-            // No scheme typed: try HTTPS first, then the plain-HTTP LAN address
-            // most home servers actually answer on.
-            val candidates = if ("://" in trimmed) listOf(trimmed) else listOf("https://$trimmed", "http://$trimmed")
-            val deviceId = deviceId()
-            val body = buildJsonObject {
-                put("Username", username)
-                put("Pw", password)
-            }.toString().toRequestBody(JSON)
-
-            var lastError = "Couldn't reach that server."
-            for (server in candidates) {
-                val url = "$server/Users/AuthenticateByName".toHttpUrlOrNull()
-                    ?: return@withContext "That doesn't look like a server address."
-                val request = Request.Builder()
-                    .url(url)
-                    .header("Authorization", Auth.header(deviceId, null))
-                    .post(body)
-                    .build()
-                val result = try {
-                    http.newCall(request).execute()
-                } catch (e: IOException) {
-                    lastError = "Couldn't reach that server: ${e.message ?: e.javaClass.simpleName}"
-                    continue
-                }
-                result.use { response ->
-                    if (!response.isSuccessful) {
-                        return@withContext "Sign in failed (${response.code}). Check your server address and credentials."
-                    }
-                    val auth = runCatching { AppJson.decodeFromString<AuthResponse>(response.body!!.string()) }.getOrNull()
-                    val token = auth?.accessToken
-                    val user = auth?.user
-                    if (token == null || user == null) return@withContext "Sign in didn't return a session."
-                    // The server said yes; from here nothing local may block
-                    // sign-in. A storage failure just means asking again next launch.
-                    secure.write(mapOf(KEY_SERVER to server, KEY_TOKEN to token, KEY_USER to user.id, KEY_NAME to user.name))
-                    _session.value = Session(server, token, user.id, user.name, deviceId)
-                    return@withContext null
-                }
+            try {
+                authenticate(http, rawServer, username, password)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                "Sign in failed: ${e.message ?: e.javaClass.simpleName}"
             }
-            lastError
         }
+
+    private fun authenticate(http: OkHttpClient, rawServer: String, username: String, password: String): String? {
+        val candidates = serverCandidates(rawServer)
+        if (candidates.isEmpty()) return "Enter your server address."
+        val probe = http.newBuilder()
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .callTimeout(10, TimeUnit.SECONDS)
+            .build()
+        val deviceId = deviceId()
+        val body = buildJsonObject {
+            put("Username", username)
+            put("Pw", password)
+        }.toString().toRequestBody(JSON)
+
+        var lastError = "Couldn't reach that server."
+        for (server in candidates) {
+            val infoUrl = "$server/System/Info/Public".toHttpUrlOrNull()
+                ?: return "That doesn't look like a server address."
+            val isJellyfin = try {
+                probe.newCall(Request.Builder().url(infoUrl).build()).execute().use { response ->
+                    response.isSuccessful &&
+                        runCatching { AppJson.decodeFromString<PublicInfo>(response.body!!.string()).id.isNotEmpty() }.getOrDefault(false)
+                }
+            } catch (e: IOException) {
+                lastError = "Couldn't reach ${server.substringAfter("://")}: ${reason(e)}."
+                continue
+            }
+            if (!isJellyfin) {
+                lastError = "${server.substringAfter("://")} answered, but it isn't a Jellyfin server. Check the address and port."
+                continue
+            }
+
+            val request = Request.Builder()
+                .url("$server/Users/AuthenticateByName")
+                .header("Authorization", Auth.header(deviceId, null))
+                .post(body)
+                .build()
+            val response = try {
+                http.newCall(request).execute()
+            } catch (e: IOException) {
+                return "Lost the connection while signing in: ${reason(e)}."
+            }
+            response.use {
+                when {
+                    it.code == 401 -> return "Wrong username or password."
+                    !it.isSuccessful -> return "The server refused sign in (HTTP ${it.code})."
+                }
+                val auth = runCatching { AppJson.decodeFromString<AuthResponse>(it.body!!.string()) }.getOrNull()
+                val token = auth?.accessToken
+                val user = auth?.user
+                if (token == null || user == null) return "Sign in didn't return a session."
+                // The server said yes; from here nothing local may block
+                // sign-in. A storage failure just means asking again next launch.
+                secure.write(mapOf(KEY_SERVER to server, KEY_TOKEN to token, KEY_USER to user.id, KEY_NAME to user.name))
+                _session.value = Session(server, token, user.id, user.name, deviceId)
+                return null
+            }
+        }
+        return lastError
+    }
+
+    private fun reason(e: IOException): String = when (e) {
+        is java.net.UnknownHostException -> "address not found"
+        is java.net.ConnectException -> "nothing is answering there"
+        is java.net.SocketTimeoutException, is java.io.InterruptedIOException -> "it took too long to answer"
+        is javax.net.ssl.SSLException -> "secure connection failed"
+        else -> e.message ?: e.javaClass.simpleName
+    }
 
     fun signOut() {
         secure.write(mapOf(KEY_SERVER to null, KEY_TOKEN to null, KEY_USER to null, KEY_NAME to null))
