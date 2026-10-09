@@ -7,8 +7,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -29,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +50,7 @@ import com.veeha.fastfin.data.isResumable
 import com.veeha.fastfin.data.isSeries
 import com.veeha.fastfin.data.playedFraction
 import com.veeha.fastfin.ui.LocalImages
+import com.veeha.fastfin.ui.LocalLayout
 import com.veeha.fastfin.ui.components.Artwork
 import com.veeha.fastfin.ui.components.Glass
 import com.veeha.fastfin.ui.components.GlassButton
@@ -73,19 +82,29 @@ private val PosterShape = FF.ShapeLg
  */
 @Composable
 fun Hero(slides: List<Item>, autoAdvance: Boolean, onPrimary: (Item) -> Unit, onInfo: (Item) -> Unit, onSearch: () -> Unit) {
+    if (LocalLayout.current.wide) WideHero(slides, autoAdvance, onPrimary, onInfo)
+    else NarrowHero(slides, autoAdvance, onPrimary, onInfo, onSearch)
+}
+
+/** Restarts on every settle, so a swipe resets the timer like on iOS. */
+@Composable
+private fun AutoAdvance(pager: PagerState, count: Int, enabled: Boolean) {
+    LaunchedEffect(pager.settledPage, enabled, count) {
+        if (!enabled || count < 2) return@LaunchedEffect
+        delay(AUTO_ADVANCE_MS)
+        if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % count)
+    }
+}
+
+@Composable
+private fun NarrowHero(slides: List<Item>, autoAdvance: Boolean, onPrimary: (Item) -> Unit, onInfo: (Item) -> Unit, onSearch: () -> Unit) {
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val posterWidth = min(windowSizeDp().width * 0.7f, 360.dp)
     val posterHeight = posterWidth * 1.5f
     val topPadding = statusBar + 64.dp
     val height = topPadding + posterHeight + 132.dp
     val pager = rememberPagerState { slides.size }
-
-    // Restarts on every settle, so a swipe resets the timer like on iOS.
-    LaunchedEffect(pager.settledPage, autoAdvance, slides.size) {
-        if (!autoAdvance || slides.size < 2) return@LaunchedEffect
-        delay(AUTO_ADVANCE_MS)
-        if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % slides.size)
-    }
+    AutoAdvance(pager, slides.size, autoAdvance)
 
     Box(Modifier.fillMaxWidth().height(height).background(FF.Background)) {
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { slides[it].id }) { page ->
@@ -107,6 +126,157 @@ fun Hero(slides: List<Item>, autoAdvance: Boolean, onPrimary: (Item) -> Unit, on
         }
 
         if (slides.size > 1) Dots(pager, slides.size, Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
+    }
+}
+
+private fun primaryLabel(item: Item) = when {
+    item.isSeries -> "View Episodes"
+    item.isResumable -> "Resume"
+    else -> "Play"
+}
+
+private fun metaLine(item: Item, genres: Int) = (
+    listOfNotNull(
+        item.productionYear?.toString(),
+        formatRuntime(item.runTimeTicks).ifEmpty { null },
+        item.officialRating,
+    ) + item.genres.orEmpty().take(genres)
+    ).joinToString("  ·  ")
+
+private val ReadingShade = Brush.horizontalGradient(
+    0f to Color(0xF00A0A0E), 0.42f to Color(0xA60A0A0E), 0.72f to Color.Transparent,
+)
+private val FloorShade = Brush.verticalGradient(0.5f to Color.Transparent, 1f to FF.Background)
+
+/**
+ * Landscape tablets and wide windows: a cinematic, full-bleed backdrop, with
+ * the logo, details, synopsis and buttons along the bottom-left over a
+ * reading shade, the way the Apple TV app does it. A portrait poster centred
+ * on a wide screen wastes two thirds of it.
+ *
+ * Titles without a backdrop fall back to the blurred-poster ground with the
+ * poster on the right, so no slide is ever empty.
+ */
+@Composable
+private fun WideHero(slides: List<Item>, autoAdvance: Boolean, onPrimary: (Item) -> Unit, onInfo: (Item) -> Unit) {
+    val layout = LocalLayout.current
+    val height = min(layout.height * 0.8f, layout.width * 0.56f)
+    // Phones held sideways are wide but short: drop the synopsis, shrink the logo.
+    val compact = height < 460.dp
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val pager = rememberPagerState { slides.size }
+    AutoAdvance(pager, slides.size, autoAdvance)
+
+    Box(Modifier.fillMaxWidth().height(height).background(FF.Background)) {
+        HorizontalPager(pager, Modifier.fillMaxSize(), key = { slides[it].id }) { page ->
+            WideSlide(slides[page], compact, onPrimary, onInfo)
+        }
+
+        // Brand at the same height as the top tab bar; only where both fit.
+        if (layout.width >= 760.dp) {
+            Box(
+                Modifier
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    .padding(start = layout.gutter, top = statusBar + 8.dp)
+                    .height(52.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Glass(Modifier.height(40.dp), shape = FF.Pill, style = GlassStyle.Clear, contentAlignment = Alignment.Center) {
+                    Text(
+                        "FastFin", Modifier.padding(horizontal = 16.dp), color = FF.Text, fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.2).sp,
+                    )
+                }
+            }
+        }
+
+        if (slides.size > 1) {
+            Dots(
+                pager, slides.size,
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    .padding(end = layout.gutter + 16.dp, bottom = if (compact) 18.dp else 26.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WideSlide(item: Item, compact: Boolean, onPrimary: (Item) -> Unit, onInfo: (Item) -> Unit) {
+    val images = LocalImages.current
+    val layout = LocalLayout.current
+    val backdrop = images.backdrop(item, layout.width.px())
+    val logoWidth = if (compact) 240.dp else 360.dp
+    val logo = images.logo(item, logoWidth.px())
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    Box(Modifier.fillMaxSize()) {
+        if (backdrop != null) {
+            Artwork(backdrop, Modifier.fillMaxSize(), alignment = Alignment.TopCenter)
+        } else {
+            Artwork(images.poster(item, 64), Modifier.fillMaxSize().blur(40.dp))
+            Box(Modifier.fillMaxSize().background(Dim))
+        }
+        Box(Modifier.fillMaxSize().background(ReadingShade))
+        Box(Modifier.fillMaxSize().background(FloorShade))
+
+        Row(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .padding(
+                    start = layout.gutter + 16.dp, end = layout.gutter + 16.dp,
+                    top = statusBar + 80.dp, bottom = if (compact) 36.dp else 56.dp,
+                ),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Box(Modifier.weight(1f)) {
+                Column(Modifier.widthIn(max = 540.dp), verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)) {
+                    if (logo != null) {
+                        Artwork(
+                            logo, Modifier.width(logoWidth).height(if (compact) 72.dp else 116.dp),
+                            contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
+                        )
+                    } else {
+                        Text(
+                            item.name, color = FF.Text, fontSize = if (compact) 28.sp else 40.sp, fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-0.8).sp, lineHeight = if (compact) 32.sp else 44.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    metaLine(item, genres = 2).takeIf { it.isNotEmpty() }?.let {
+                        Text(it, color = FF.TextSecondary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (!compact) {
+                        item.overview?.let {
+                            Text(it, color = FF.TextSecondary, fontSize = 14.5.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        GlassPillButton(primaryLabel(item), { onPrimary(item) }, Modifier.widthIn(min = 180.dp), icon = Lucide.Play, prominent = true)
+                        GlassButton(Lucide.Info, "Details", { onInfo(item) }, diameter = 46.dp)
+                    }
+                    if (item.isResumable && item.playedFraction > 0f) {
+                        ProgressLine(item.playedFraction, Modifier.width(236.dp), track = Color(0x40FFFFFF))
+                    }
+                }
+            }
+            if (backdrop == null) {
+                Box(
+                    Modifier
+                        .padding(start = 24.dp)
+                        .fillMaxHeight(0.92f)
+                        .aspectRatio(2f / 3f)
+                        .shadow(24.dp, PosterShape, ambientColor = Color.Black, spotColor = Color.Black)
+                        .pressable(pressedScale = 0.98f) { onPrimary(item) }
+                        .clip(PosterShape)
+                        .background(FF.Elevated)
+                        .border(0.5.dp, Color(0x38FFFFFF), PosterShape)
+                ) {
+                    Artwork(images.poster(item, 480), Modifier.fillMaxSize())
+                }
+            }
+        }
     }
 }
 

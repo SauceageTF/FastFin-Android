@@ -2,6 +2,9 @@ package com.veeha.fastfin.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
@@ -58,6 +61,17 @@ val AccentName.hover: Color
 
 val LocalAccent = staticCompositionLocalOf { AccentName.Ember }
 
+/**
+ * Every plain Text inherits bodyLarge. Material's 24 sp line height and
+ * 0.5 sp tracking are sized for 16 sp body copy; on the 11–15 sp labels this
+ * design uses, they inflate each line by up to half again and push stacked
+ * lines out of their pills. Natural line height and no tracking match iOS.
+ */
+private val BaseTypography = Typography()
+private val AppTypography = BaseTypography.copy(
+    bodyLarge = BaseTypography.bodyLarge.copy(lineHeight = TextUnit.Unspecified, letterSpacing = 0.sp),
+)
+
 @Composable
 fun FastFinTheme(accent: AccentName, content: @Composable () -> Unit) {
     val scheme = darkColorScheme(
@@ -76,7 +90,7 @@ fun FastFinTheme(accent: AccentName, content: @Composable () -> Unit) {
         outlineVariant = FF.GlassRim,
         error = FF.Danger,
     )
-    MaterialTheme(colorScheme = scheme) {
+    MaterialTheme(colorScheme = scheme, typography = AppTypography) {
         CompositionLocalProvider(LocalAccent provides accent, LocalContentColor provides FF.Text, content = content)
     }
 }

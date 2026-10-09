@@ -32,6 +32,7 @@ import com.veeha.fastfin.data.Repository
 import com.veeha.fastfin.data.isSeries
 import com.veeha.fastfin.ui.LocalGraph
 import com.veeha.fastfin.ui.LocalSession
+import com.veeha.fastfin.ui.LocalTabBarTop
 import com.veeha.fastfin.ui.components.CarouselRow
 import com.veeha.fastfin.ui.components.CenterSpinner
 import com.veeha.fastfin.ui.components.ContinueWatchingCard
@@ -100,7 +101,10 @@ fun HomeScreen(nav: Navigator, bottomInset: Dp) {
                         )
                     }
                 } else {
-                    item("top") { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
+                    item("top") {
+                        Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                        Spacer(Modifier.height(LocalTabBarTop.current))
+                    }
                 }
 
                 if (data.resume.isNotEmpty()) {

@@ -15,13 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +51,8 @@ import com.veeha.fastfin.data.Repository
 import com.veeha.fastfin.data.libraryLabel
 import com.veeha.fastfin.ui.LocalGraph
 import com.veeha.fastfin.ui.LocalImages
+import com.veeha.fastfin.ui.LocalLayout
+import com.veeha.fastfin.ui.LocalTabBarTop
 import com.veeha.fastfin.ui.components.Artwork
 import com.veeha.fastfin.ui.components.CenterSpinner
 import com.veeha.fastfin.ui.components.ErrorCard
@@ -92,17 +93,28 @@ fun LibraryScreen(nav: Navigator, bottomInset: Dp) {
     val load by rememberLoad("libraries", LIBRARY_TTL) { graph.api.libraries() }
     val libraries = load.data
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val layout = LocalLayout.current
 
     when {
         libraries == null && load.error == null -> CenterSpinner()
         libraries == null -> ErrorCard("Couldn't load your libraries: ${load.error}")
-        else -> LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = top + 8.dp, bottom = bottomInset + 24.dp),
+        // One column on phones; two or three cards across on a landscape tablet.
+        else -> LazyVerticalGrid(
+            columns = GridCells.Adaptive(340.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = layout.gutter, end = layout.gutter,
+                top = top + LocalTabBarTop.current + 8.dp, bottom = bottomInset + 24.dp,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item("title") { LargeTitle("Library") }
-            if (libraries.isEmpty()) item("empty") { Text("No libraries found.", color = FF.TextDim, modifier = Modifier.padding(top = 40.dp)) }
+            item("title", span = { GridItemSpan(maxLineSpan) }) { LargeTitle("Library") }
+            if (libraries.isEmpty()) {
+                item("empty", span = { GridItemSpan(maxLineSpan) }) {
+                    Text("No libraries found.", color = FF.TextDim, modifier = Modifier.padding(top = 40.dp))
+                }
+            }
             items(libraries, key = { it.id }) { library ->
                 LibraryCard(library) { nav.push(Route.LibraryGrid(library.id, library.name)) }
             }
@@ -119,7 +131,8 @@ private fun LibraryCard(library: Library, onClick: () -> Unit) {
     // Same key and size as Home's shelf, so after Home this is a cache hit.
     val latest by rememberLoad("latest:${library.id}", LIBRARY_TTL) { graph.api.latest(library.id) }
     val cover = latest.data?.firstOrNull()
-    val width = windowSizeDp().width
+    // A tablet shows these two or three across, so a phone-width image is plenty.
+    val width = if (LocalLayout.current.wide) 480.dp else windowSizeDp().width
     Box(
         Modifier
             .fillMaxWidth()
@@ -220,20 +233,21 @@ fun LibraryGridScreen(route: Route.LibraryGrid, nav: Navigator, bottomInset: Dp)
         }
     }
 
-    val columnWidth = (windowSizeDp().width - 60.dp) / 3
+    val layout = LocalLayout.current
+    val columnWidth = layout.gridImage
 
     Column(Modifier.fillMaxSize()) {
         TopBar(route.name) { nav.pop() }
-        SearchField(query, { query = it }, "Filter ${route.name}", Modifier.padding(horizontal = 18.dp, vertical = 6.dp))
+        SearchField(query, { query = it }, "Filter ${route.name}", Modifier.padding(horizontal = layout.gutter, vertical = 6.dp).widthIn(max = 600.dp))
         val items = paged.items
         when {
             items == null -> CenterSpinner()
             items.isEmpty() && paged.error != null -> ErrorCard("Couldn't load this library: ${paged.error}")
             else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(104.dp),
+                columns = GridCells.Adaptive(layout.gridCell),
                 state = grid,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = bottomInset + 40.dp),
+                contentPadding = PaddingValues(start = layout.gutter, end = layout.gutter, top = 12.dp, bottom = bottomInset + 40.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {

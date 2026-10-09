@@ -24,7 +24,9 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -70,16 +72,23 @@ import com.veeha.fastfin.ui.theme.color
 
 private val TabBarHeight = 62.dp
 private val TabBarBlock = TabBarHeight + 16.dp
+private val TopTabBarHeight = 52.dp
+/** What tab screens reserve under the top tab bar: margin, bar, breathing room. */
+private val TopTabBarBlock = TopTabBarHeight + 20.dp
 val MiniPlayerHeight = 64.dp
+/** The wide-layout mini player is a corner card rather than a full-width bar. */
+val WideMiniPlayerWidth = 420.dp
 
 @Composable
 fun FastFinRoot(graph: AppGraph, inPip: Boolean, pip: PipController) {
     val settings by graph.settings.flow.collectAsStateWithLifecycle()
     val session by graph.sessions.session.collectAsStateWithLifecycle()
     val restoring by graph.sessions.restoring.collectAsStateWithLifecycle()
+    val window = windowSizeDp()
+    val layout = remember(window) { Layout.of(window) }
 
     FastFinTheme(settings.accent) {
-        CompositionLocalProvider(LocalGraph provides graph, LocalPip provides pip) {
+        CompositionLocalProvider(LocalGraph provides graph, LocalPip provides pip, LocalLayout provides layout) {
             Box(Modifier.fillMaxSize().background(FF.Background)) {
                 val current = session
                 when {
@@ -99,13 +108,14 @@ fun FastFinRoot(graph: AppGraph, inPip: Boolean, pip: PipController) {
 }
 
 /**
- * Tabs, pushed screens, the floating tab bar and the player. The bottom
- * inset every screen pads by is computed here once from what is actually
- * showing: navigation bar, tab bar, mini player.
+ * Tabs, pushed screens, the floating tab bar and the player. The insets every
+ * screen pads by are computed here once from what is actually showing:
+ * system bars, tab bar (bottom on phones, top on wide layouts), mini player.
  */
 @Composable
 private fun MainShell(nav: Navigator, inPip: Boolean) {
     val playback = LocalGraph.current.playback
+    val layout = LocalLayout.current
     val player by playback.state.collectAsStateWithLifecycle()
     val routeStates = rememberSaveableStateHolder()
     val tabStates = rememberSaveableStateHolder()
@@ -114,8 +124,13 @@ private fun MainShell(nav: Navigator, inPip: Boolean) {
     val tabBarVisible = top == null
     val miniVisible = player != null && player?.expanded == false
     val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val miniBottom: Dp = navBar + if (tabBarVisible) TabBarBlock else 10.dp
+    val miniBottom: Dp = navBar + when {
+        layout.wide -> 16.dp
+        tabBarVisible -> TabBarBlock
+        else -> 10.dp
+    }
     val contentBottom: Dp = miniBottom + if (miniVisible) MiniPlayerHeight + 10.dp else 0.dp
+    val tabTop = if (layout.wide) TopTabBarBlock else 0.dp
 
     BackHandler(enabled = top != null) {
         nav.pop()?.let { routeStates.removeState(it.key) }
@@ -138,12 +153,14 @@ private fun MainShell(nav: Navigator, inPip: Boolean) {
         ) { entry ->
             Box(Modifier.fillMaxSize().background(FF.Background)) {
                 if (entry == null) {
-                    tabStates.SaveableStateProvider(nav.tab.name) {
-                        when (nav.tab) {
-                            Tab.Home -> HomeScreen(nav, contentBottom)
-                            Tab.Library -> LibraryScreen(nav, contentBottom)
-                            Tab.Settings -> SettingsScreen(contentBottom)
-                            Tab.Search -> SearchScreen(nav, contentBottom)
+                    CompositionLocalProvider(LocalTabBarTop provides tabTop) {
+                        tabStates.SaveableStateProvider(nav.tab.name) {
+                            when (nav.tab) {
+                                Tab.Home -> HomeScreen(nav, contentBottom)
+                                Tab.Library -> LibraryScreen(nav, contentBottom)
+                                Tab.Settings -> SettingsScreen(contentBottom)
+                                Tab.Search -> SearchScreen(nav, contentBottom)
+                            }
                         }
                     }
                 } else {
@@ -158,24 +175,34 @@ private fun MainShell(nav: Navigator, inPip: Boolean) {
             }
         }
 
-        if (tabBarVisible) TabBar(nav.tab, nav::select, Modifier.align(Alignment.BottomCenter))
+        if (tabBarVisible) {
+            if (layout.wide) TopTabBar(nav.tab, nav::select, Modifier.align(Alignment.TopCenter))
+            else BottomTabBar(nav.tab, nav::select, Modifier.align(Alignment.BottomCenter))
+        }
 
-        PlayerHost(miniBottom = miniBottom, inPip = inPip)
+        PlayerHost(
+            miniBottom = miniBottom,
+            miniWidth = if (layout.wide) WideMiniPlayerWidth else null,
+            inPip = inPip,
+        )
     }
 }
 
-private val BarScrim = Brush.verticalGradient(listOf(Color.Transparent, Color(0xE60A0A0E)))
+private val BottomScrim = Brush.verticalGradient(listOf(Color.Transparent, Color(0xE60A0A0E)))
+private val TopScrim = Brush.verticalGradient(listOf(Color(0xD90A0A0E), Color.Transparent))
 
-/** The iOS 26 floating tab bar: a glass capsule for the tabs and a separate
- * glass circle for Search. */
+/** Phones: the iOS 26 floating tab bar, a glass capsule for the tabs and a
+ * separate glass circle for Search. Capped in width so a portrait tablet
+ * doesn't stretch it edge to edge. */
 @Composable
-private fun TabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
+internal fun BottomTabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
     val accent = LocalAccent.current.color
-    Box(modifier.fillMaxWidth()) {
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         // Fades content out under the bar so labels stay legible.
-        Box(Modifier.matchParentSize().background(BarScrim))
+        Box(Modifier.matchParentSize().background(BottomScrim))
         Row(
             Modifier
+                .widthIn(max = 480.dp)
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -184,26 +211,59 @@ private fun TabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = 
         ) {
             Glass(Modifier.weight(1f).fillMaxHeight(), shape = FF.Pill) {
                 Row(Modifier.fillMaxSize().padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TabItem(Tab.Home, Lucide.Home, selected == Tab.Home, accent, onSelect, Modifier.weight(1f))
-                    TabItem(Tab.Library, Lucide.Grid, selected == Tab.Library, accent, onSelect, Modifier.weight(1f))
-                    TabItem(Tab.Settings, Lucide.Sliders, selected == Tab.Settings, accent, onSelect, Modifier.weight(1f))
+                    for ((tab, icon) in TABS) {
+                        StackedTabItem(tab, icon, selected == tab, accent, onSelect, Modifier.weight(1f))
+                    }
                 }
             }
             Spacer(Modifier.width(10.dp))
-            Glass(
-                Modifier.size(TabBarHeight).pressable(role = Role.Tab) { onSelect(Tab.Search) },
-                shape = CircleShape,
-                tint = if (selected == Tab.Search) Color(0xE6303038) else null,
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Lucide.Search, "Search", Modifier.size(22.dp), tint = if (selected == Tab.Search) accent else FF.Text)
-            }
+            SearchCircle(selected == Tab.Search, accent, TabBarHeight, onSelect)
         }
     }
 }
 
+/**
+ * Wide layouts: the iPadOS-style tab bar, a compact capsule floating at the
+ * top centre with icon and label side by side. On a landscape screen height
+ * is the scarce dimension, so the bottom stays free for content and the
+ * corner mini player.
+ */
 @Composable
-private fun TabItem(tab: Tab, icon: ImageVector, selected: Boolean, accent: Color, onSelect: (Tab) -> Unit, modifier: Modifier) {
+internal fun TopTabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
+    val accent = LocalAccent.current.color
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.matchParentSize().background(TopScrim))
+        Row(
+            Modifier.statusBarsPadding().padding(top = 8.dp, bottom = 16.dp).height(TopTabBarHeight),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Glass(Modifier.fillMaxHeight(), shape = FF.Pill) {
+                Row(Modifier.fillMaxHeight().padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for ((tab, icon) in TABS) InlineTabItem(tab, icon, selected == tab, accent, onSelect)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            SearchCircle(selected == Tab.Search, accent, TopTabBarHeight, onSelect)
+        }
+    }
+}
+
+private val TABS = listOf(Tab.Home to Lucide.Home, Tab.Library to Lucide.Grid, Tab.Settings to Lucide.Sliders)
+
+@Composable
+private fun SearchCircle(selected: Boolean, accent: Color, size: Dp, onSelect: (Tab) -> Unit) {
+    Glass(
+        Modifier.size(size).pressable(role = Role.Tab) { onSelect(Tab.Search) },
+        shape = CircleShape,
+        tint = if (selected) Color(0xE6303038) else null,
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Lucide.Search, "Search", Modifier.size(size * 0.36f), tint = if (selected) accent else FF.Text)
+    }
+}
+
+@Composable
+private fun StackedTabItem(tab: Tab, icon: ImageVector, selected: Boolean, accent: Color, onSelect: (Tab) -> Unit, modifier: Modifier) {
     Column(
         modifier
             .fillMaxHeight()
@@ -216,5 +276,23 @@ private fun TabItem(tab: Tab, icon: ImageVector, selected: Boolean, accent: Colo
         val tint = if (selected) accent else FF.Text
         Icon(icon, null, Modifier.size(21.dp), tint = tint)
         Text(tab.label, color = tint, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+private fun InlineTabItem(tab: Tab, icon: ImageVector, selected: Boolean, accent: Color, onSelect: (Tab) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxHeight()
+            .clip(FF.Pill)
+            .background(if (selected) FF.GlassFillStrong else Color.Transparent)
+            .pressable(role = Role.Tab) { onSelect(tab) }
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val tint = if (selected) accent else FF.Text
+        Icon(icon, null, Modifier.size(18.dp), tint = tint)
+        Spacer(Modifier.width(8.dp))
+        Text(tab.label, color = tint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
 }

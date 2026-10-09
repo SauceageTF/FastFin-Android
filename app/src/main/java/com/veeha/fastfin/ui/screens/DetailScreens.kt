@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -54,6 +55,7 @@ import com.veeha.fastfin.data.isWatched
 import com.veeha.fastfin.data.playedFraction
 import com.veeha.fastfin.ui.LocalGraph
 import com.veeha.fastfin.ui.LocalImages
+import com.veeha.fastfin.ui.LocalLayout
 import com.veeha.fastfin.ui.components.Artwork
 import com.veeha.fastfin.ui.components.CarouselRow
 import com.veeha.fastfin.ui.components.CenterSpinner
@@ -97,7 +99,9 @@ fun ItemDetailScreen(route: Route.Detail, nav: Navigator, bottomInset: Dp) {
     }
 
     val window = windowSizeDp()
-    val heroHeight = minOf(440.dp, window.height * 0.52f)
+    val layout = LocalLayout.current
+    // Landscape tablets get a taller, cinematic header; phones keep the iOS proportions.
+    val heroHeight = if (layout.wide) minOf(560.dp, window.height * 0.62f) else minOf(440.dp, window.height * 0.52f)
     val screenPx = window.width.px()
 
     Box(Modifier.fillMaxSize()) {
@@ -116,7 +120,7 @@ fun ItemDetailScreen(route: Route.Detail, nav: Navigator, bottomInset: Dp) {
         }
         GlassButton(
             Lucide.ChevronLeft, "Back", { nav.pop() },
-            Modifier.statusBarsPadding().padding(start = 14.dp, top = 6.dp),
+            Modifier.statusBarsPadding().padding(start = LocalLayout.current.gutter - 4.dp, top = 6.dp),
             diameter = 40.dp, style = GlassStyle.Clear,
         )
     }
@@ -139,7 +143,7 @@ private fun InfoBlock(item: Item, nav: Navigator) {
     val seasonsLoad by rememberLoad("seasons:${item.id}", ITEM_TTL) { if (item.isSeries) graph.api.seasons(item.id) else emptyList() }
 
     Column(
-        Modifier.overlapUp(72.dp).padding(horizontal = 18.dp).padding(bottom = 30.dp),
+        Modifier.overlapUp(72.dp).padding(horizontal = LocalLayout.current.gutter).widthIn(max = 760.dp).padding(bottom = 30.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         if (logo != null) {
@@ -285,7 +289,7 @@ fun SeasonScreen(route: Route.Season, nav: Navigator, bottomInset: Dp) {
         val episodes = episodesLoad.data
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = bottomInset + 40.dp),
+            contentPadding = PaddingValues(start = LocalLayout.current.centered(900.dp), end = LocalLayout.current.centered(900.dp), top = 8.dp, bottom = bottomInset + 40.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (seasons.size > 1) {

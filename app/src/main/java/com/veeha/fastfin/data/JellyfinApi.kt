@@ -87,6 +87,8 @@ class JellyfinApi(private val http: OkHttpClient, private val sessions: SessionS
         LIST + mapOf(
             "userId" to userId, "recursive" to true, "includeItemTypes" to "Movie,Series",
             "sortBy" to "Random", "imageTypes" to "Primary", "limit" to limit,
+            // Eight items only: worth it for the wide hero's synopsis and genres.
+            "fields" to "Overview,Genres",
         ),
     ).items
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -28,6 +29,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.veeha.fastfin.data.Item
 import com.veeha.fastfin.ui.LocalGraph
+import com.veeha.fastfin.ui.LocalLayout
+import com.veeha.fastfin.ui.LocalTabBarTop
 import com.veeha.fastfin.ui.components.EmptyState
 import com.veeha.fastfin.ui.components.LargeTitle
 import com.veeha.fastfin.ui.components.Lucide
@@ -35,7 +38,6 @@ import com.veeha.fastfin.ui.components.PosterCard
 import com.veeha.fastfin.ui.components.SearchField
 import com.veeha.fastfin.ui.nav.Navigator
 import com.veeha.fastfin.ui.nav.Route
-import com.veeha.fastfin.ui.windowSizeDp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
@@ -88,17 +90,18 @@ fun SearchScreen(nav: Navigator, bottomInset: Dp) {
             }
         }
     }
-    val columnWidth = (windowSizeDp().width - 60.dp) / 3
+    val layout = LocalLayout.current
+    val columnWidth = layout.gridImage
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Column(Modifier.padding(horizontal = 18.dp)) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = LocalTabBarTop.current)) {
+        Column(Modifier.padding(horizontal = layout.gutter)) {
             LargeTitle("Search")
-            SearchField(query, { query = it }, "Movies, shows, episodes", focusRequester = focus, onSearch = { focusManager.clearFocus() })
+            SearchField(query, { query = it }, "Movies, shows, episodes", Modifier.widthIn(max = 600.dp), focusRequester = focus, onSearch = { focusManager.clearFocus() })
         }
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(104.dp),
+            columns = GridCells.Adaptive(layout.gridCell),
             modifier = Modifier.fillMaxSize().nestedScroll(dismissKeyboard),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 16.dp, bottom = bottomInset + 24.dp),
+            contentPadding = PaddingValues(start = layout.gutter, end = layout.gutter, top = 16.dp, bottom = bottomInset + 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {

@@ -42,6 +42,7 @@ import com.veeha.fastfin.data.episodeLabel
 import com.veeha.fastfin.data.formatRuntime
 import com.veeha.fastfin.data.playedFraction
 import com.veeha.fastfin.ui.LocalImages
+import com.veeha.fastfin.ui.LocalLayout
 import com.veeha.fastfin.ui.px
 import com.veeha.fastfin.ui.theme.FF
 
@@ -87,7 +88,7 @@ fun PosterCard(
     item: Item,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    width: Dp? = 108.dp,
+    width: Dp? = LocalLayout.current.poster,
     title: String = item.seriesName ?: item.name,
     subtitle: String? = if (item.seriesName != null) item.name else item.productionYear?.toString(),
     imageWidth: Dp = width ?: 120.dp,
@@ -124,7 +125,7 @@ private val CardScrim = Brush.verticalGradient(0.3f to Color.Transparent, 1f to 
 
 /** 16:9 resume card: still, title, time left, progress. */
 @Composable
-fun ContinueWatchingCard(item: Item, onClick: () -> Unit, width: Dp = 196.dp) {
+fun ContinueWatchingCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayout.current.landscapeCard) {
     val images = LocalImages.current
     val played = item.playedFraction
     val remaining = item.runTimeTicks?.let { ticks ->
@@ -162,18 +163,18 @@ fun ContinueWatchingCard(item: Item, onClick: () -> Unit, width: Dp = 196.dp) {
 
 /** 16:9 episode still with a play badge, for Next Up. */
 @Composable
-fun EpisodeCard(item: Item, onClick: () -> Unit) {
+fun EpisodeCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayout.current.landscapeCard) {
     val images = LocalImages.current
-    Column(Modifier.width(196.dp).pressable(onClick = onClick)) {
+    Column(Modifier.width(width).pressable(onClick = onClick)) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(110.dp)
+                .height(width * 9f / 16f)
                 .clip(FF.ShapeLg)
                 .background(FF.Elevated)
                 .border(Dp.Hairline, FF.GlassRim, FF.ShapeLg)
         ) {
-            Artwork(images.primary(item, 196.dp.px()), Modifier.fillMaxSize())
+            Artwork(images.primary(item, width.px()), Modifier.fillMaxSize())
             Glass(
                 Modifier.align(Alignment.BottomEnd).padding(10.dp).size(30.dp),
                 shape = FF.Pill, style = GlassStyle.Clear, contentAlignment = Alignment.Center,
@@ -191,9 +192,10 @@ fun EpisodeCard(item: Item, onClick: () -> Unit) {
 /** Titled horizontal shelf. A LazyRow, so off-screen cards never compose. */
 @Composable
 fun CarouselRow(title: String, onSeeAll: (() -> Unit)? = null, content: LazyListScope.() -> Unit) {
+    val gutter = LocalLayout.current.gutter
     Column {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp).padding(bottom = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = gutter).padding(bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(title, Modifier.weight(1f), color = FF.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
@@ -206,7 +208,7 @@ fun CarouselRow(title: String, onSeeAll: (() -> Unit)? = null, content: LazyList
             }
         }
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 18.dp),
+            contentPadding = PaddingValues(horizontal = gutter),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             content = content,
         )

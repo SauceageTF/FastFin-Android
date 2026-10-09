@@ -12,6 +12,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -105,7 +106,7 @@ private class Geometry(val card: IntRect, val thumb: IntRect)
  * scans video out directly instead of the GPU copying every frame.
  */
 @Composable
-fun PlayerHost(miniBottom: Dp, inPip: Boolean) {
+fun PlayerHost(miniBottom: Dp, inPip: Boolean, miniWidth: Dp? = null) {
     val playback = LocalGraph.current.playback
     val ui = playback.state.collectAsStateWithLifecycle().value ?: return
     val player = playback.player.collectAsStateWithLifecycle().value
@@ -124,12 +125,14 @@ fun PlayerHost(miniBottom: Dp, inPip: Boolean) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = constraints.maxWidth
         val height = constraints.maxHeight
-        val geometry = remember(width, height, miniBottom, density) {
+        val geometry = remember(width, height, miniBottom, miniWidth, density) {
             with(density) {
-                val margin = MiniMargin.roundToPx()
                 val inset = MiniInset.roundToPx()
                 val bottom = height - miniBottom.roundToPx()
-                val card = IntRect(margin, bottom - MiniPlayerHeight.roundToPx(), width - margin, bottom)
+                // Phones: a full-width bar. Wide layouts: a card in the bottom-right corner.
+                val margin = (if (miniWidth != null) 20.dp else MiniMargin).roundToPx()
+                val left = if (miniWidth != null) (width - margin - miniWidth.roundToPx()).coerceAtLeast(margin) else margin
+                val card = IntRect(left, bottom - MiniPlayerHeight.roundToPx(), width - margin, bottom)
                 val thumbHeight = card.height - inset * 2
                 val thumbWidth = (thumbHeight * 16f / 9f).roundToInt()
                 Geometry(card, IntRect(card.left + inset, card.top + inset, card.left + inset + thumbWidth, card.bottom - inset))
@@ -316,11 +319,9 @@ private fun MiniControls(playback: PlaybackManager, ui: PlayerUi, player: ExoPla
             .pressable(pressedScale = 0.985f) { playback.expand() }
     ) {
         Row(Modifier.fillMaxSize().padding(start = thumbWidth + 6.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(ui.item.seriesName ?: ui.item.name, color = FF.Text, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                subtitleFor(ui.item, ui.source?.hdr)?.let {
-                    Text(it, color = FF.TextDim, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(ui.item.seriesName ?: ui.item.name, color = FF.Text, fontWeight = FontWeight.Bold, style = tight(13.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SubtitleWithBadge(subtitleFor(ui.item), ui.source?.hdr, FF.TextDim, 11.5.sp)
             }
             MiniButton(if (isPlaying) Lucide.Pause else Lucide.Play, if (isPlaying) "Pause" else "Play") { playback.togglePlay() }
             MiniButton(Lucide.Close, "Close player") { playback.close() }
@@ -343,7 +344,6 @@ private fun MiniButton(icon: androidx.compose.ui.graphics.vector.ImageVector, la
     }
 }
 
-internal fun subtitleFor(item: Item, hdr: String?): String? {
-    val base = if (item.seriesName != null) item.episodeLabel else item.productionYear?.toString()
-    return listOfNotNull(base, hdr).joinToString("  ·  ").ifEmpty { null }
-}
+/** Episode label or year. The HDR format is drawn separately, as a badge. */
+internal fun subtitleFor(item: Item): String? =
+    if (item.seriesName != null) item.episodeLabel else item.productionYear?.toString()

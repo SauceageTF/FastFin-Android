@@ -57,6 +57,8 @@ import com.veeha.fastfin.data.StreamingQuality
 import com.veeha.fastfin.playback.DeviceCapabilities
 import com.veeha.fastfin.playback.HdrType
 import com.veeha.fastfin.ui.LocalGraph
+import com.veeha.fastfin.ui.LocalLayout
+import com.veeha.fastfin.ui.LocalTabBarTop
 import com.veeha.fastfin.ui.LocalSession
 import com.veeha.fastfin.ui.components.Glass
 import com.veeha.fastfin.ui.components.LargeTitle
@@ -89,7 +91,8 @@ fun SettingsScreen(bottomInset: Dp) {
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding()
-            .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = bottomInset + 40.dp),
+            .padding(horizontal = LocalLayout.current.centered(720.dp))
+            .padding(top = 8.dp + LocalTabBarTop.current, bottom = bottomInset + 40.dp),
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
         LargeTitle("Settings")

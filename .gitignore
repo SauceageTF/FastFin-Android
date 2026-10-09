@@ -8,3 +8,6 @@ captures/
 .cxx/
 *.apk
 *.aab
+
+# Paparazzi screenshots: recorded locally with ./gradlew :app:recordPaparazziDebug, not committed
+app/src/test/snapshots/

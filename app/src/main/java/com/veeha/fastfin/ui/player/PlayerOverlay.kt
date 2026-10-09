@@ -74,8 +74,6 @@ import com.veeha.fastfin.ui.theme.hover
 import kotlinx.coroutines.delay
 
 private const val CONTROLS_TIMEOUT_MS = 4_000L
-private val TopShade = Brush.verticalGradient(listOf(Color(0x8C000000), Color.Transparent))
-private val BottomShade = Brush.verticalGradient(listOf(Color.Transparent, Color(0x8C000000)))
 
 /**
  * The full-screen HUD, ported from the iOS glass player: close, title, PiP
@@ -167,113 +165,54 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
             }
         }
 
-        if (buffering && !visible) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center).size(40.dp), color = Color.White, strokeWidth = 3.dp)
+        if (buffering) {
+            BufferingIndicator(Modifier.align(Alignment.Center))
         }
 
         AnimatedVisibility(visible, enter = fadeIn(tween(160)), exit = fadeOut(tween(220))) {
-            Box(Modifier.fillMaxSize()) {
-                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(140.dp).background(TopShade))
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(140.dp).background(BottomShade))
-
-                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 10.dp)) {
-                    TopRow(
-                        playback, ui, menuOpen,
-                        onMenu = {
-                            menuOpen = it
-                            interactions++
-                        },
-                        Modifier.align(Alignment.TopCenter),
-                    )
-
-                    if (ui.source != null) {
-                        Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                            SkipButton(back = true) {
-                                playback.seekBy(-10_000)
-                                interactions++
-                            }
-                            Box(
-                                Modifier.size(80.dp).pressable(pressedScale = 0.94f, haptic = true) {
-                                    playback.togglePlay()
-                                    interactions++
-                                }
-                            ) {
-                                Glass(Modifier.fillMaxSize(), shape = CircleShape, contentAlignment = Alignment.Center) {
-                                    if (buffering) CircularProgressIndicator(Modifier.size(28.dp), color = Color.White, strokeWidth = 2.5.dp)
-                                    else Icon(if (isPlaying) Lucide.Pause else Lucide.Play, if (isPlaying) "Pause" else "Play", Modifier.size(30.dp), tint = FF.Text)
-                                }
-                            }
-                            SkipButton(back = false) {
-                                playback.seekBy(10_000)
-                                interactions++
-                            }
-                        }
-
-                        Glass(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), shape = FF.ShapeXl, style = GlassStyle.Clear) {
-                            Row(Modifier.padding(horizontal = 18.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(formatClock(scrubMs ?: positionMs), Modifier.widthIn(min = 48.dp), color = FF.Text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
-                                Scrubber(
-                                    position = { scrubMs ?: positionMs },
-                                    buffered = { bufferedMs },
-                                    durationMs = durationMs,
-                                    onScrub = { scrubMs = it },
-                                    onScrubEnd = { target ->
-                                        playback.seekTo(target)
-                                        positionMs = target
-                                        scrubMs = null
-                                        interactions++
-                                    },
-                                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                                )
-                                Text(
-                                    "-" + formatClock((durationMs - (scrubMs ?: positionMs)).coerceAtLeast(0)),
-                                    Modifier.widthIn(min = 52.dp), color = FF.Text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
-                                    fontFamily = FontFamily.Monospace, textAlign = TextAlign.End,
-                                )
-                            }
-                        }
+            val pip = LocalPip.current
+            PlayerControls(
+                title = ui.item.seriesName ?: ui.item.name,
+                subtitle = subtitleFor(ui.item),
+                hdr = ui.source?.hdr,
+                ready = ui.source != null,
+                isPlaying = isPlaying,
+                position = { scrubMs ?: positionMs },
+                buffered = { bufferedMs },
+                durationMs = durationMs,
+                scrubbing = scrubMs != null,
+                pipSupported = pip.supported,
+                onCollapse = { playback.collapse() },
+                onClose = { playback.close() },
+                onPip = pip::enter,
+                onSkip = { delta ->
+                    playback.seekBy(delta)
+                    interactions++
+                },
+                onTogglePlay = {
+                    playback.togglePlay()
+                    interactions++
+                },
+                onScrub = { scrubMs = it },
+                onScrubEnd = { target ->
+                    playback.seekTo(target)
+                    positionMs = target
+                    scrubMs = null
+                    interactions++
+                },
+                trackMenu = {
+                    TrackMenu(playback, ui.source, menuOpen) {
+                        menuOpen = it
+                        interactions++
                     }
-                }
-            }
+                },
+            )
         }
 
         ui.notice?.let {
-            Glass(Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp), shape = FF.Pill) {
+            Glass(Modifier.align(Alignment.BottomCenter).padding(bottom = 132.dp), shape = FF.Pill) {
                 Text(it, Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = FF.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
-        }
-    }
-}
-
-@Composable
-private fun TopRow(playback: PlaybackManager, ui: PlayerUi, menuOpen: Boolean, onMenu: (Boolean) -> Unit, modifier: Modifier) {
-    val pip = LocalPip.current
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        GlassButton(Lucide.ChevronDown, "Minimise player", { playback.collapse() }, diameter = 42.dp, style = GlassStyle.Clear)
-        Glass(Modifier.weight(1f).height(46.dp), shape = FF.Pill, style = GlassStyle.Clear) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.Center) {
-                Text(ui.item.seriesName ?: ui.item.name, color = FF.Text, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                subtitleFor(ui.item, ui.source?.hdr)?.let {
-                    Text(it, color = FF.TextSecondary, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-        if (pip.supported) GlassButton(Lucide.PictureInPicture, "Picture in Picture", pip::enter, diameter = 42.dp, style = GlassStyle.Clear)
-        TrackMenu(playback, ui.source, menuOpen, onMenu)
-        GlassButton(Lucide.Close, "Close player", { playback.close() }, diameter = 42.dp, style = GlassStyle.Clear)
-    }
-}
-
-@Composable
-private fun SkipButton(back: Boolean, onClick: () -> Unit) {
-    GlassButton(
-        if (back) Lucide.RotateCcw else Lucide.RotateCw,
-        if (back) "Back 10 seconds" else "Forward 10 seconds",
-        onClick, diameter = 56.dp, style = GlassStyle.Clear,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(if (back) Lucide.RotateCcw else Lucide.RotateCw, null, Modifier.size(28.dp), tint = FF.Text)
-            Text("10", color = FF.Text, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 1.dp))
         }
     }
 }
@@ -282,8 +221,8 @@ private fun SkipButton(back: Boolean, onClick: () -> Unit) {
 @Composable
 private fun TrackMenu(playback: PlaybackManager, source: PlaybackSource?, open: Boolean, onOpen: (Boolean) -> Unit) {
     Box {
-        GlassButton(
-            Lucide.Captions, "Audio and subtitles", { onOpen(true) }, diameter = 42.dp, style = GlassStyle.Clear,
+        TrackChip(
+            trackSummary(source), { onOpen(true) },
             enabled = source != null && (source.audioTracks.isNotEmpty() || source.subtitleTracks.isNotEmpty()),
         )
         if (source != null) {
@@ -335,62 +274,6 @@ private fun MenuOption(title: String, selected: Boolean, onClick: () -> Unit) {
         leadingIcon = {
             Box(Modifier.size(18.dp)) { if (selected) Icon(Lucide.Check, null, Modifier.size(18.dp), tint = LocalAccent.current.hover) }
         },
-    )
-}
-
-/** Thin track with buffered range and a knob. Drawn from lambdas, so the
- * playhead moving only redraws this strip. */
-@Composable
-private fun Scrubber(
-    position: () -> Long,
-    buffered: () -> Long,
-    durationMs: Long,
-    onScrub: (Long) -> Unit,
-    onScrubEnd: (Long) -> Unit,
-    modifier: Modifier,
-) {
-    Box(
-        modifier
-            .height(40.dp)
-            .pointerInput(durationMs) {
-                fun toMs(x: Float): Long {
-                    if (durationMs <= 0 || size.width == 0) return 0
-                    return ((x / size.width).coerceIn(0f, 1f) * durationMs).toLong().coerceAtMost((durationMs - 500).coerceAtLeast(0))
-                }
-                var last = 0L
-                detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        last = toMs(offset.x)
-                        onScrub(last)
-                    },
-                    onDragEnd = { onScrubEnd(last) },
-                    onDragCancel = { onScrubEnd(last) },
-                    onHorizontalDrag = { change, _ ->
-                        change.consume()
-                        last = toMs(change.position.x)
-                        onScrub(last)
-                    },
-                )
-            }
-            .pointerInput(durationMs) {
-                detectTapGestures { offset ->
-                    if (durationMs > 0 && size.width > 0) {
-                        onScrubEnd(((offset.x / size.width).coerceIn(0f, 1f) * durationMs).toLong())
-                    }
-                }
-            }
-            .drawBehind {
-                val total = durationMs.coerceAtLeast(1).toFloat()
-                val played = (position() / total).coerceIn(0f, 1f)
-                val loaded = (buffered() / total).coerceIn(0f, 1f)
-                val track = 4.dp.toPx()
-                val top = (size.height - track) / 2
-                val corner = CornerRadius(track / 2)
-                drawRoundRect(Color(0x40FFFFFF), Offset(0f, top), Size(size.width, track), corner)
-                drawRoundRect(Color(0x59FFFFFF), Offset(0f, top), Size(size.width * loaded, track), corner)
-                drawRoundRect(FF.Text, Offset(0f, top), Size(size.width * played, track), corner)
-                drawCircle(FF.Text, 7.dp.toPx(), Offset((size.width * played).coerceIn(7.dp.toPx(), size.width - 7.dp.toPx()), size.height / 2))
-            }
     )
 }
 

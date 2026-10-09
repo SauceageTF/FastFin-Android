@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    // Screenshot tests rendered on the JVM: interface changes get visual evidence
+    // at phone and tablet sizes without a device.
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -15,8 +18,8 @@ android {
         applicationId = "com.veeha.fastfin"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     buildTypes {
@@ -86,4 +89,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
+    testImplementation(libs.coil.test)
 }
