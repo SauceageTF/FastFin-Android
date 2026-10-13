@@ -71,7 +71,9 @@ fun HomeScreen(nav: Navigator, bottomInset: Dp) {
     // Not saveable: a pull-to-refresh forces one fetch, and coming back to
     // Home later goes through the normal TTL again.
     var refreshes by remember { mutableIntStateOf(0) }
-    val flow = remember(refreshes) {
+    // Watching something marks Home stale; it then refreshes in place.
+    val changes by graph.repo.changes.collectAsStateWithLifecycle()
+    val flow = remember(refreshes, changes) {
         graph.repo.observe(key, HOME_TTL, force = refreshes > 0, snapshot = HomeData.serializer()) { loadHome(graph) }
     }
     val load by flow.collectAsStateWithLifecycle(Load(graph.repo.peek<HomeData>(key)))

@@ -93,7 +93,7 @@ class JellyfinJsonTest {
         assertEquals(1920, ImageUrls.bucket(5000))
         val urls = ImageUrls("http://jf:8096")
         val episode = Item("ep", "Pilot", type = "Episode", seriesId = "show", seriesPrimaryImageTag = "st", imageTags = mapOf("Primary" to "t"))
-        assertEquals("http://jf:8096/Items/show/Images/Primary?maxWidth=320&quality=90&tag=st", urls.poster(episode, 300))
+        assertEquals("http://jf:8096/Items/show/Images/Primary?maxWidth=320&quality=90&format=Webp&tag=st", urls.poster(episode, 300))
         // A known-empty tag map means no request at all, not a 404.
         assertNull(urls.primary(Item("x", imageTags = emptyMap()), 300))
     }

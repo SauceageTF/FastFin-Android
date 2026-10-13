@@ -133,6 +133,59 @@ class JellyfinApi(private val http: OkHttpClient, private val sessions: SessionS
 
     suspend fun item(id: String): Item = get("/Items/$id", mapOf("userId" to userId))
 
+    /**
+     * Intros, recaps and credits for an episode or film. Jellyfin's own media
+     * segments first (10.10+); if that has none, Intro Skipper's older
+     * endpoint. Neither installed is not an error: just no segments.
+     */
+    suspend fun segments(itemId: String): List<Segment> {
+        val native = quietly { segmentsFromMediaSegments(get<Page<MediaSegmentDto>>("/MediaSegments/$itemId").items) }
+        if (!native.isNullOrEmpty()) return native
+        return quietly { segmentsFromIntroSkipper(get<IntroSkipperDto>("/Episode/$itemId/IntroSkipperSegments")) }.orEmpty()
+    }
+
+    /**
+     * The episodes either side of this one, across season boundaries, in one
+     * request (`adjacentTo` returns previous, this, next).
+     */
+    suspend fun adjacentEpisodes(episode: Item): Pair<Item?, Item?> {
+        val seriesId = episode.seriesId ?: return null to null
+        val items = get<Page<Item>>(
+            "/Shows/$seriesId/Episodes",
+            LIST + mapOf("userId" to userId, "adjacentTo" to episode.id),
+        ).items
+        val here = items.indexOfFirst { it.id == episode.id }
+        if (here < 0) return null to null
+        return items.getOrNull(here - 1) to items.getOrNull(here + 1)
+    }
+
+    /** Watched or not. For a show or season, every episode in it. */
+    suspend fun setPlayed(itemId: String, played: Boolean): Boolean =
+        sendChecked(if (played) "POST" else "DELETE", "/UserPlayedItems/$itemId")
+
+    suspend fun setFavorite(itemId: String, favorite: Boolean): Boolean =
+        sendChecked(if (favorite) "POST" else "DELETE", "/UserFavoriteItems/$itemId")
+
+    /** Like [send], but says whether the server accepted it, so the UI can undo. */
+    private suspend fun sendChecked(method: String, path: String): Boolean = try {
+        val body = if (method == "POST") EMPTY else null
+        http.newCall(Request.Builder().url(url(path, mapOf("userId" to userId))).method(method, body).build())
+            .await().use { it.isSuccessful }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
+    }
+
+    /** Null on any failure except cancellation, for optional extras. */
+    private suspend fun <T> quietly(block: suspend () -> T): T? = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
     suspend fun seasons(seriesId: String): List<Item> =
         get<Page<Item>>("/Shows/$seriesId/Seasons", LIST + mapOf("userId" to userId)).items
 

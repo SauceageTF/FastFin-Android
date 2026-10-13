@@ -75,6 +75,37 @@ data class Item(
     val communityRating: Double? = null,
     val officialRating: String? = null,
     val taglines: List<String>? = null,
+    /** Only on the full item (the detail fetch), for picking tracks by language before playback. */
+    val mediaStreams: List<ItemStream>? = null,
+    /** Scrubbing thumbnails (Jellyfin 10.9+): media source id, then width, then the sheet layout. */
+    val trickplay: Map<String, Map<String, TrickplayInfo>>? = null,
+)
+
+/**
+ * One trickplay resolution: thumbnails of `width`x`height`, laid out
+ * `tileWidth` across and `tileHeight` down per sheet image, one every
+ * `interval` milliseconds.
+ */
+@Immutable
+@Serializable
+data class TrickplayInfo(
+    val width: Int = 0,
+    val height: Int = 0,
+    val tileWidth: Int = 0,
+    val tileHeight: Int = 0,
+    val thumbnailCount: Int = 0,
+    val interval: Int = 0,
+)
+
+/** An audio or subtitle stream as the item describes it. */
+@Immutable
+@Serializable
+data class ItemStream(
+    val index: Int,
+    val type: String = "",
+    val language: String? = null,
+    val isDefault: Boolean = false,
+    val isForced: Boolean = false,
 )
 
 /** Home in one value, so it can be written to disk and shown instantly on the

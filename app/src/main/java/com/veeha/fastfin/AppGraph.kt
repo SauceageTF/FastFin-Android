@@ -12,6 +12,9 @@ import com.veeha.fastfin.data.Repository
 import com.veeha.fastfin.data.SecureStore
 import com.veeha.fastfin.data.SessionStore
 import com.veeha.fastfin.data.SettingsStore
+import com.veeha.fastfin.data.TrackMemory
+import com.veeha.fastfin.data.UserActions
+import com.veeha.fastfin.playback.TrickplayThumbnails
 import com.veeha.fastfin.playback.CapabilityProbe
 import com.veeha.fastfin.playback.DeviceCapabilities
 import com.veeha.fastfin.playback.PlaybackManager
@@ -49,6 +52,10 @@ class AppGraph(val app: Application) {
 
     val api = JellyfinApi(http, sessions)
     val repo = Repository(scope, File(app.filesDir, "snapshots"))
+    val actions = UserActions(app, scope, api, repo)
+    val tracks = TrackMemory(app)
+    /** Scrubbing thumbnails; holds a few sheet decoders only while a video is open. */
+    val trickplay by lazy { TrickplayThumbnails(http) }
 
     /** Probing MediaCodecList takes tens of milliseconds, so it starts now, off
      * the main thread, and is long finished by the time anything is played. */
@@ -84,6 +91,8 @@ class AppGraph(val app: Application) {
         playback.close()
         api.logout()
         repo.clear()
+        actions.clear()
+        tracks.clear()
         sessions.signOut()
     }
 }

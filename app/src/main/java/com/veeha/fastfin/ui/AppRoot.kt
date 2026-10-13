@@ -89,7 +89,7 @@ fun FastFinRoot(graph: AppGraph, inPip: Boolean, pip: PipController) {
     val layout = remember(window) { Layout.of(window) }
 
     FastFinTheme(settings.accent) {
-        CompositionLocalProvider(LocalGraph provides graph, LocalPip provides pip, LocalLayout provides layout) {
+        CompositionLocalProvider(LocalGraph provides graph, LocalUserActions provides graph.actions, LocalPip provides pip, LocalLayout provides layout) {
             Box(Modifier.fillMaxSize().background(FF.Background)) {
                 val current = session
                 when {

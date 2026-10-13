@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -178,7 +177,7 @@ fun PlayerHost(miniBottom: Dp, inPip: Boolean, miniWidth: Dp? = null) {
 
         // Artwork until the first frame: playback looks instant even while
         // the server is still negotiating.
-        if (!firstFrame) LoadingCover(ui, showSpinner = ui.error == null && expanded, Modifier.placeAt(videoRect))
+        if (!firstFrame) LoadingCover(ui, Modifier.placeAt(videoRect))
 
         // Rounded corners for the mini thumbnail.
         Canvas(Modifier.placeAt(thumb).graphicsLayer { alpha = 1f - progress.value }) {
@@ -276,11 +275,10 @@ private fun Subtitles(player: ExoPlayer, modifier: Modifier) {
 }
 
 @Composable
-private fun LoadingCover(ui: PlayerUi, showSpinner: Boolean, modifier: Modifier) {
+private fun LoadingCover(ui: PlayerUi, modifier: Modifier) {
     val images = LocalImages.current
     Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
         Artwork(images.landscape(ui.item, 1280.dp.px().coerceAtMost(1920)), Modifier.fillMaxSize().graphicsLayer { alpha = 0.45f })
-        if (showSpinner) CircularProgressIndicator(Modifier.size(34.dp), color = Color.White, strokeWidth = 2.5.dp)
     }
 }
 

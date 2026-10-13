@@ -40,6 +40,20 @@ enum class HdrMode(val label: String) { Auto("Auto"), Always("Always HDR"), Sdr(
  */
 enum class PlayerLayout(val label: String) { Bottom("Bottom"), Center("Center") }
 
+/**
+ * Intros and recaps, from Jellyfin's media segments (the Intro Skipper
+ * plugin fills them in).
+ *
+ * - Button: a "Skip intro" button while the intro plays.
+ * - Auto: jump past it the moment it starts, once per episode, so seeking
+ *   back into an intro on purpose is left alone.
+ * - Off: play everything.
+ */
+enum class SkipMode(val label: String) { Button("Button"), Auto("Automatic"), Off("Off") }
+
+/** Subtitle preference meaning "no subtitles", as opposed to a language. */
+const val SUBTITLES_OFF_PREF = "off"
+
 @Immutable
 data class AppSettings(
     val accent: AccentName = AccentName.Ember,
@@ -47,6 +61,13 @@ data class AppSettings(
     val hdr: HdrMode = HdrMode.Auto,
     val autoPip: Boolean = true,
     val playerLayout: PlayerLayout = PlayerLayout.Bottom,
+    val skipIntros: SkipMode = SkipMode.Button,
+    /** When an episode reaches its credits (or its end), count down and play the next one. */
+    val autoplayNext: Boolean = true,
+    /** ISO 639-2 code for audio, or null for whatever the server picks. */
+    val audioLanguage: String? = null,
+    /** ISO 639-2 code for subtitles, [SUBTITLES_OFF_PREF], or null for the server's choice. */
+    val subtitleLanguage: String? = null,
 )
 
 /**
@@ -72,6 +93,10 @@ class SettingsStore(context: Context) {
             putString("hdr", next.hdr.name)
             putBoolean("autoPip", next.autoPip)
             putString("playerLayout", next.playerLayout.name)
+            putString("skipIntros", next.skipIntros.name)
+            putBoolean("autoplayNext", next.autoplayNext)
+            putString("audioLanguage", next.audioLanguage)
+            putString("subtitleLanguage", next.subtitleLanguage)
         }
     }
 
@@ -83,6 +108,10 @@ class SettingsStore(context: Context) {
             hdr = enumOr(prefs.getString("hdr", null), defaults.hdr),
             autoPip = prefs.getBoolean("autoPip", defaults.autoPip),
             playerLayout = enumOr(prefs.getString("playerLayout", null), defaults.playerLayout),
+            skipIntros = enumOr(prefs.getString("skipIntros", null), defaults.skipIntros),
+            autoplayNext = prefs.getBoolean("autoplayNext", defaults.autoplayNext),
+            audioLanguage = prefs.getString("audioLanguage", null),
+            subtitleLanguage = prefs.getString("subtitleLanguage", null),
         )
     }
 

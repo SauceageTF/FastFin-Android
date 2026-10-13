@@ -38,14 +38,17 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +67,8 @@ import com.veeha.fastfin.playback.PlaybackManager
 import com.veeha.fastfin.playback.PlaybackSource
 import com.veeha.fastfin.playback.PlayerUi
 import com.veeha.fastfin.ui.LocalGraph
+import com.veeha.fastfin.ui.LocalSession
+import com.veeha.fastfin.playback.TrickplaySource
 import com.veeha.fastfin.ui.LocalPip
 import com.veeha.fastfin.data.PlayerLayout
 import com.veeha.fastfin.ui.components.Panel
@@ -75,8 +80,14 @@ import com.veeha.fastfin.ui.theme.FF
 import com.veeha.fastfin.ui.theme.LocalAccent
 import com.veeha.fastfin.ui.theme.hover
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 
 private const val CONTROLS_TIMEOUT_MS = 4_000L
+/** How long the double-tap "+10s" marker stays after the last tap. */
+private const val SKIP_MARKER_MS = 700L
 
 /**
  * The full-screen HUD, ported from the iOS player: close, title, PiP
@@ -94,7 +105,11 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
     }
 
     val isPlaying by playback.isPlaying.collectAsStateWithLifecycle()
-    val buffering by playback.isBuffering.collectAsStateWithLifecycle()
+    val stalled by playback.isBuffering.collectAsStateWithLifecycle()
+    val firstFrame by playback.firstFrame.collectAsStateWithLifecycle()
+    // One spinner for both waits: starting up (no picture yet) and buffering
+    // mid-film. Drawn here only, so it never doubles up with another.
+    val buffering = stalled || !firstFrame
     val centered = LocalGraph.current.settings.flow.collectAsStateWithLifecycle().value.playerLayout == PlayerLayout.Center
     var visible by remember { mutableStateOf(true) }
     var interactions by remember { mutableIntStateOf(0) }
@@ -103,7 +118,28 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
     var positionMs by remember { mutableLongStateOf(0L) }
     var bufferedMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf((ui.item.runTimeTicks ?: 0L) / TICKS_PER_MS) }
-    var skipFlash by remember { mutableIntStateOf(0) }
+    // The double-tap marker: seconds jumped so far in this burst (signed; 0 = hidden),
+    // and a count of taps. The fade timer is keyed on the count, which changes on
+    // every tap; keyed on the value, fast taps could go 1, 0, 1 inside one frame,
+    // never restart it, and leave the marker stuck on screen.
+    var skipTotal by remember { mutableIntStateOf(0) }
+    var skipTaps by remember { mutableIntStateOf(0) }
+
+    // Scrubbing thumbnails: decoded only when the playhead crosses into a new
+    // one, and a decode the finger has already left behind is dropped.
+    val graph = LocalGraph.current
+    val serverUrl = LocalSession.current.serverUrl
+    val trickplay = remember(ui.item, ui.source?.mediaSourceId) { TrickplaySource.of(ui.item, ui.source?.mediaSourceId, serverUrl) }
+    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(trickplay) {
+        preview = null
+        val source = trickplay ?: return@LaunchedEffect
+        snapshotFlow { scrubMs }
+            .filterNotNull()
+            .map { it / source.info.interval }
+            .distinctUntilChanged()
+            .collectLatest { step -> graph.trickplay.thumbnail(source, step * source.info.interval)?.let { preview = it } }
+    }
 
     // The clock is only sampled while it is on screen, four times a second
     // while playing, once when paused. Hidden controls cost nothing.
@@ -124,10 +160,10 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
         }
     }
 
-    LaunchedEffect(skipFlash) {
-        if (skipFlash != 0) {
-            delay(650)
-            skipFlash = 0
+    LaunchedEffect(skipTaps) {
+        if (skipTotal != 0) {
+            delay(SKIP_MARKER_MS)
+            skipTotal = 0
         }
     }
 
@@ -143,7 +179,10 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
                     onDoubleTap = { offset ->
                         val forward = offset.x > size.width / 2
                         playback.seekBy(if (forward) 10_000 else -10_000)
-                        skipFlash = if (forward) 1 else -1
+                        val step = if (forward) 10 else -10
+                        // Same direction adds up (+10s, +20s...); switching starts over.
+                        skipTotal = if (skipTotal != 0 && (skipTotal > 0) == forward) skipTotal + step else step
+                        skipTaps++
                         interactions++
                     },
                 )
@@ -160,19 +199,15 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
                 )
             }
     ) {
-        if (skipFlash != 0) {
+        if (skipTotal != 0) {
             Panel(
-                Modifier.align(if (skipFlash > 0) Alignment.CenterEnd else Alignment.CenterStart).padding(horizontal = 56.dp),
+                Modifier.align(if (skipTotal > 0) Alignment.CenterEnd else Alignment.CenterStart).padding(horizontal = 56.dp),
                 shape = FF.Pill, style = PanelStyle.Overlay,
             ) {
-                Text(if (skipFlash > 0) "+10s" else "−10s", Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = FF.Text, fontWeight = FontWeight.Bold)
+                Text(if (skipTotal > 0) "+${skipTotal}s" else "−${-skipTotal}s", Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = FF.Text, fontWeight = FontWeight.Bold)
             }
         }
 
-        // The centre layout shows buffering inside its play button while the controls are up.
-        if (buffering && !(centered && visible)) {
-            BufferingIndicator(Modifier.align(Alignment.Center))
-        }
 
         AnimatedVisibility(visible, enter = fadeIn(tween(160)), exit = fadeOut(tween(220))) {
             val pip = LocalPip.current
@@ -187,6 +222,8 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
                 buffered = { bufferedMs },
                 durationMs = durationMs,
                 scrubbing = scrubMs != null,
+                scrubPreview = preview.takeIf { scrubMs != null },
+                scrubPreviewAspect = trickplay?.aspect ?: (16f / 9f),
                 centered = centered,
                 buffering = buffering,
                 pipSupported = pip.supported,
@@ -217,6 +254,18 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
             )
         }
 
+        // The one buffering spinner, above the controls. It stays put while they fade
+        // in and out (two spinners swapping places overlapped during the fade), and
+        // it is centred on the same safe area as the controls, so in the centre
+        // layout it sits exactly inside the (then empty) play button.
+        if (buffering) {
+            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
+                BufferingIndicator()
+            }
+        }
+
+        SkipLayer(playback, controlsVisible = visible, Modifier.align(Alignment.BottomEnd))
+
         ui.notice?.let {
             Panel(Modifier.align(Alignment.BottomCenter).padding(bottom = 132.dp), shape = FF.Pill) {
                 Text(it, Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = FF.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -225,16 +274,27 @@ internal fun PlayerOverlay(playback: PlaybackManager, ui: PlayerUi, player: ExoP
     }
 }
 
-/** Audio and subtitle choices, plus how the stream is being delivered. */
+private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+private fun speedLabel(speed: Float): String = (if (speed % 1f == 0f) speed.toInt().toString() else speed.toString().trimEnd('0')) + "×"
+
+/** Speed, audio and subtitle choices, plus how the stream is being delivered. */
 @Composable
 private fun TrackMenu(playback: PlaybackManager, source: PlaybackSource?, open: Boolean, onOpen: (Boolean) -> Unit) {
+    val speed by playback.speed.collectAsStateWithLifecycle()
     Box {
         TrackChip(
-            trackSummary(source), { onOpen(true) },
-            enabled = source != null && (source.audioTracks.isNotEmpty() || source.subtitleTracks.isNotEmpty()),
+            (if (speed != 1f) speedLabel(speed) + "  ·  " else "") + trackSummary(source), { onOpen(true) },
+            enabled = source != null,
         )
         if (source != null) {
             DropdownMenu(expanded = open, onDismissRequest = { onOpen(false) }) {
+                MenuHeader("Speed")
+                // Stays open: the choice shows at once, and it's easy to try another.
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (option in SPEEDS) SpeedPill(speedLabel(option), option == speed) { playback.setSpeed(option) }
+                }
+                if (source.audioTracks.isNotEmpty()) HorizontalDivider(color = FF.Rim)
                 if (source.audioTracks.isNotEmpty()) {
                     MenuHeader("Audio")
                     source.audioTracks.forEach { track ->
@@ -317,5 +377,20 @@ private fun ErrorOverlay(playback: PlaybackManager, ui: PlayerUi) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SpeedPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .height(32.dp)
+            .clip(FF.Pill)
+            .background(if (selected) FF.Text else FF.Field)
+            .pressable(pressedScale = 0.94f, haptic = true, onClick = onClick)
+            .padding(horizontal = 11.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (selected) FF.OnLight else FF.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }

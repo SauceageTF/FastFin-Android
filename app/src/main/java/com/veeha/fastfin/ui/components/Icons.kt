@@ -29,6 +29,8 @@ object Lucide {
     val ArrowDown by lazy { stroke("M12 5v14", "m19 12-7 7-7-7") }
     val ArrowUpDown by lazy { stroke("m21 16-4 4-4-4", "M17 20V4", "m3 8 4-4 4 4", "M7 4v16") }
     val Filter by lazy { stroke("M3 6h18", "M7 12h10", "M10 18h4") }
+    val Heart by lazy { stroke(HEART) }
+    val HeartFilled by lazy { filled(HEART) }
     val Play by lazy { filled("M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z") }
     val Pause by lazy { filled(rect(14f, 3f, 5f, 18f, 1f), rect(5f, 3f, 5f, 18f, 1f)) }
     val Info by lazy { stroke(circle(12f, 12f, 10f), "M12 16v-4", "M12 8h.01") }
@@ -113,6 +115,8 @@ object Lucide {
 
     private fun stroke(vararg paths: String) = build(paths, filled = false)
     private fun filled(vararg paths: String) = build(paths, filled = true)
+
+    private const val HEART = "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"
 
     private fun circle(cx: Float, cy: Float, r: Float) = "M${cx - r} ${cy}a$r $r 0 1 0 ${2 * r} 0a$r $r 0 1 0 ${-2 * r} 0"
 

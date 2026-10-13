@@ -3,6 +3,7 @@ package com.veeha.fastfin.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalDensity
@@ -12,6 +13,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.veeha.fastfin.AppGraph
+import com.veeha.fastfin.data.UserActions
 import com.veeha.fastfin.data.ImageUrls
 import com.veeha.fastfin.data.Load
 import com.veeha.fastfin.data.Session
@@ -25,6 +27,8 @@ interface PipController {
 }
 
 val LocalGraph = staticCompositionLocalOf<AppGraph> { error("No AppGraph") }
+/** Watched/favourite taps. Optional, so cards also draw in previews and screenshot tests. */
+val LocalUserActions = staticCompositionLocalOf<UserActions?> { null }
 val LocalSession = staticCompositionLocalOf<Session> { error("Not signed in") }
 val LocalImages = staticCompositionLocalOf<ImageUrls> { error("Not signed in") }
 val LocalPip = staticCompositionLocalOf<PipController> {

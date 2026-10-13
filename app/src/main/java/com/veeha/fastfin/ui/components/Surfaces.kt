@@ -5,7 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -83,11 +83,14 @@ fun Modifier.pressable(
     pressedScale: Float = 0.97f,
     role: Role = Role.Button,
     haptic: Boolean = false,
+    /** Long-press: opens a card's actions. Always with a firm haptic. */
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
     // The click lambda changes as the screen recomposes (a sign-in button's
     // fields fill in). Always call the latest one, never the first captured.
     val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) pressedScale else 1f, spring(dampingRatio = 0.7f, stiffness = 900f), label = "press")
@@ -97,7 +100,18 @@ fun Modifier.pressable(
             scaleX = scale
             scaleY = scale
         }
-        .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = role) {
+        .combinedClickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            role = role,
+            onLongClick = if (onLongClick == null) null else {
+                {
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    currentOnLongClick?.invoke()
+                }
+            },
+        ) {
             if (haptic) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
             currentOnClick()
         }

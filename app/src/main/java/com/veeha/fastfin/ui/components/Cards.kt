@@ -21,6 +21,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,29 +90,35 @@ private val PosterShape = RoundedCornerShape(FF.RadiusMd)
 /** 2:3 poster with a hairline rim so dark artwork still reads as a card. */
 @Composable
 fun PosterCard(
-    item: Item,
+    source: Item,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp? = LocalLayout.current.poster,
-    title: String = item.seriesName ?: item.name,
-    subtitle: String? = if (item.seriesName != null) item.name else item.productionYear?.toString(),
+    title: String = source.seriesName ?: source.name,
+    subtitle: String? = if (source.seriesName != null) source.name else source.productionYear?.toString(),
     imageWidth: Dp = width ?: 120.dp,
 ) {
+    val item = rememberLiveItem(source)
     val images = LocalImages.current
     val url = images.poster(item, imageWidth.px())
+    var menu by remember { mutableStateOf(false) }
     Column(
         (if (width != null) modifier.width(width) else modifier.fillMaxWidth())
-            .pressable(onClick = onClick)
+            .pressable(onLongClick = { menu = true }, onClick = onClick)
     ) {
-        Artwork(
-            url,
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f)
-                .clip(PosterShape)
-                .background(FF.Elevated)
-                .border(Dp.Hairline, FF.Rim, PosterShape),
-        )
+        Box {
+            Artwork(
+                url,
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .clip(PosterShape)
+                    .background(FF.Elevated)
+                    .border(Dp.Hairline, FF.Rim, PosterShape),
+            )
+            if (item.isWatched) WatchedBadge(Modifier.align(Alignment.TopEnd).padding(7.dp))
+            ItemActionsMenu(item, menu) { menu = false }
+        }
         Text(
             title, modifier = Modifier.padding(top = 7.dp), color = FF.Text, fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -126,8 +136,10 @@ private val CardScrim = Brush.verticalGradient(0.3f to Color.Transparent, 1f to 
 
 /** 16:9 resume card: still, title, time left, progress. */
 @Composable
-fun ContinueWatchingCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayout.current.landscapeCard) {
+fun ContinueWatchingCard(source: Item, onClick: () -> Unit, width: Dp = LocalLayout.current.landscapeCard) {
+    val item = rememberLiveItem(source)
     val images = LocalImages.current
+    var menu by remember { mutableStateOf(false) }
     val played = item.playedFraction
     val remaining = item.runTimeTicks?.let { ticks ->
         maxOf(1L, Math.round(ticks * (1 - played) / 10_000_000.0 / 60.0))
@@ -138,7 +150,7 @@ fun ContinueWatchingCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayou
         Modifier
             .width(width)
             .height(width * 9f / 16f)
-            .pressable(onClick = onClick)
+            .pressable(onLongClick = { menu = true }, onClick = onClick)
             .clip(FF.ShapeLg)
             .background(FF.Elevated)
             .border(Dp.Hairline, FF.Rim, FF.ShapeLg)
@@ -159,14 +171,18 @@ fun ContinueWatchingCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayou
             )
             ProgressLine(played)
         }
+        ItemActionsMenu(item, menu) { menu = false }
     }
 }
 
 /** 16:9 episode still with a play (or watched) badge and progress, for the show page and Next Up. */
 @Composable
-fun EpisodeCard(item: Item, onClick: () -> Unit, width: Dp = LocalLayout.current.landscapeCard) {
+fun EpisodeCard(source: Item, onClick: () -> Unit, width: Dp = LocalLayout.current.landscapeCard) {
+    val item = rememberLiveItem(source)
     val images = LocalImages.current
-    Column(Modifier.width(width).pressable(onClick = onClick)) {
+    var menu by remember { mutableStateOf(false) }
+    Column(Modifier.width(width).pressable(onLongClick = { menu = true }, onClick = onClick)) {
+        ItemActionsMenu(item, menu) { menu = false }
         Box(
             Modifier
                 .fillMaxWidth()
@@ -222,3 +238,11 @@ fun CarouselRow(title: String, onSeeAll: (() -> Unit)? = null, content: LazyList
 }
 
 val NoShape: Shape = RectangleShape
+
+/** A small check on a watched poster. */
+@Composable
+private fun WatchedBadge(modifier: Modifier = Modifier) {
+    Panel(modifier.size(24.dp), shape = FF.Pill, tint = FF.Text, contentAlignment = Alignment.Center) {
+        Icon(Lucide.Check, "Watched", Modifier.size(13.dp), tint = FF.OnLight)
+    }
+}

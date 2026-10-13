@@ -2,6 +2,8 @@ package com.veeha.fastfin
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -33,6 +35,12 @@ import com.veeha.fastfin.ui.LocalTabBarTop
 import com.veeha.fastfin.ui.TopTabBar
 import com.veeha.fastfin.ui.components.CarouselRow
 import com.veeha.fastfin.ui.player.PlayerControls
+import com.veeha.fastfin.ui.player.SkipButton
+import com.veeha.fastfin.ui.player.UpNextCard
+import com.veeha.fastfin.ui.player.UpNextPill
+import com.veeha.fastfin.playback.UpNext
+import com.veeha.fastfin.data.Segment
+import com.veeha.fastfin.data.SegmentKind
 import com.veeha.fastfin.ui.player.TrackChip
 import com.veeha.fastfin.ui.components.ContinueWatchingCard
 import com.veeha.fastfin.ui.components.PosterCard
@@ -122,13 +130,70 @@ class LayoutScreenshotTest(private val name: String, private val device: DeviceC
     @Test
     fun playerCentered() = renderPlayer(centered = true)
 
+    /** Dragging the timeline: the trickplay frame follows the playhead. */
+    @Test
+    fun playerScrubbing() = renderPlayer(centered = false, scrubPreview = stillFrame())
+
+    /** A stand-in trickplay thumbnail: sky over ground, so the crop and border show. */
+    private fun stillFrame(): androidx.compose.ui.graphics.ImageBitmap {
+        val frame = androidx.compose.ui.graphics.ImageBitmap(320, 180)
+        val canvas = androidx.compose.ui.graphics.Canvas(frame)
+        val paint = androidx.compose.ui.graphics.Paint()
+        paint.color = androidx.compose.ui.graphics.Color(0xFF5B7FA6)
+        canvas.drawRect(0f, 0f, 320f, 110f, paint)
+        paint.color = androidx.compose.ui.graphics.Color(0xFF3E5B34)
+        canvas.drawRect(0f, 110f, 320f, 180f, paint)
+        return frame
+    }
+
+    /** During an intro: the Skip Intro pill above the timeline. */
+    @Test
+    fun playerSkipIntro() = renderPlayer(centered = false) { wide ->
+        SkipButton(
+            Segment(SegmentKind.Intro, 30_000, 120_000), {},
+            Modifier.align(Alignment.BottomEnd).padding(end = if (wide) 40.dp else 20.dp, bottom = if (wide) 150.dp else 116.dp),
+        )
+    }
+
+    /** Credits with the controls up in the centre layout: the card folds into a pill clear of the transport. */
+    @Test
+    fun playerUpNextCentered() = renderPlayer(centered = true) { wide ->
+        val next = film("9", "Half Loop", 2022, "TV-MA", emptyList()).copy(type = "Episode", indexNumber = 5, parentIndexNumber = 1)
+        UpNextPill(
+            UpNext(next, deadline = android.os.SystemClock.elapsedRealtime() + 7_000), onPlay = {},
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = if (wide) 40.dp else 20.dp, bottom = if (wide) 150.dp else 116.dp),
+        )
+    }
+
+    /** During the credits: the next episode card counting down. */
+    @Test
+    fun playerUpNext() = renderPlayer(centered = false) { wide ->
+        val next = film("9", "Half Loop", 2022, "TV-MA", emptyList()).copy(
+            type = "Episode", seriesName = "Severance", indexNumber = 5, parentIndexNumber = 1,
+        )
+        UpNextCard(
+            UpNext(next, deadline = null), inCredits = true, onPlay = {}, onDismiss = {},
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = if (wide) 40.dp else 20.dp, bottom = if (wide) 150.dp else 116.dp),
+        )
+    }
+
     // The emulated device's configuration is the size Paparazzi renders at.
     @Suppress("ConfigurationScreenWidthHeight")
-    private fun renderPlayer(centered: Boolean) {
+    @OptIn(ExperimentalCoilApi::class)
+    private fun renderPlayer(
+        centered: Boolean,
+        scrubPreview: androidx.compose.ui.graphics.ImageBitmap? = null,
+        extras: @Composable BoxScope.(wide: Boolean) -> Unit = {},
+    ) {
         paparazzi.snapshot {
             val config = LocalConfiguration.current
             val layout = Layout.of(androidx.compose.ui.unit.DpSize(config.screenWidthDp.dp, config.screenHeightDp.dp))
-            CompositionLocalProvider(LocalLayout provides layout) { FastFinTheme(AccentName.Ember) {
+            CompositionLocalProvider(
+                LocalLayout provides layout,
+                LocalInspectionMode provides true,
+                LocalImages provides ImageUrls("http://jellyfin.local"),
+                LocalAsyncImagePreviewHandler provides artwork,
+            ) { FastFinTheme(AccentName.Ember) {
                 Box(
                     Modifier.fillMaxSize().background(
                         androidx.compose.ui.graphics.Brush.linearGradient(
@@ -138,12 +203,13 @@ class LayoutScreenshotTest(private val name: String, private val device: DeviceC
                 ) {
                     PlayerControls(
                         title = "Severance", subtitle = "E4 · The You You Are", hdr = "Dolby Vision",
-                        ready = true, isPlaying = true, scrubbing = false,
+                        ready = true, isPlaying = true, scrubbing = scrubPreview != null, scrubPreview = scrubPreview,
                         position = { 754_000 }, buffered = { 1_400_000 }, durationMs = 3_120_000,
                         pipSupported = true, centered = centered, transcoding = centered,
                         onCollapse = {}, onClose = {}, onPip = {}, onSkip = {}, onTogglePlay = {}, onScrub = {}, onScrubEnd = {},
                         trackMenu = { TrackChip("English EAC3  ·  Subtitles off", {}) },
                     )
+                    extras(minOf(layout.width, layout.height) >= 600.dp)
                 }
             } }
         }

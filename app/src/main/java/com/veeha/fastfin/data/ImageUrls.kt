@@ -19,7 +19,9 @@ class ImageUrls(private val server: String) {
     fun url(id: String, type: String, tag: String?, widthPx: Int, index: Int? = null): String = buildString {
         append(server).append("/Items/").append(id).append("/Images/").append(type)
         if (index != null) append('/').append(index)
-        append("?maxWidth=").append(bucket(widthPx)).append("&quality=90")
+        // WebP: a quarter to a third smaller than JPEG at the same quality, and
+        // it keeps logos' transparency. Jellyfin encodes it on the fly and caches it.
+        append("?maxWidth=").append(bucket(widthPx)).append("&quality=90&format=Webp")
         if (tag != null) append("&tag=").append(tag)
     }
 

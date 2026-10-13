@@ -74,6 +74,8 @@ import com.veeha.fastfin.ui.components.Lucide
 import com.veeha.fastfin.ui.components.PosterCard
 import com.veeha.fastfin.ui.components.ProgressLine
 import com.veeha.fastfin.ui.components.rememberPlainText
+import com.veeha.fastfin.ui.components.rememberLiveItem
+import com.veeha.fastfin.ui.components.isFavorite
 import com.veeha.fastfin.ui.components.TopBar
 import com.veeha.fastfin.ui.components.pressable
 import com.veeha.fastfin.ui.nav.Navigator
@@ -209,18 +211,25 @@ private fun InfoBlock(item: Item, nav: Navigator, upNext: Item?) {
                     if (item.isResumable) {
                         RoundButton(Lucide.RotateCcw, "Play from beginning", { graph.playback.open(item, restart = true) }, diameter = 46.dp)
                     }
+                    MarkButtons(item)
                 }
                 if (item.playedFraction > 0f) ProgressLine(item.playedFraction, track = Color(0x33FFFFFF))
             }
-        } else if (item.isSeries && upNext != null) {
+        } else if (item.isSeries) {
             // The show's Play starts the episode the carousel highlights.
-            val verb = if (upNext.isResumable) "Resume" else "Play"
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton(
-                    "$verb ${shortCode(upNext)}", { graph.playback.open(upNext) },
-                    Modifier.fillMaxWidth(), icon = Lucide.Play, prominent = true,
-                )
-                if (upNext.isResumable) ProgressLine(upNext.playedFraction, track = Color(0x33FFFFFF))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (upNext != null) {
+                        PillButton(
+                            (if (upNext.isResumable) "Resume " else "Play ") + shortCode(upNext), { graph.playback.open(upNext) },
+                            Modifier.weight(1f), icon = Lucide.Play, prominent = true,
+                        )
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+                    MarkButtons(item)
+                }
+                if (upNext != null && upNext.isResumable) ProgressLine(upNext.playedFraction, track = Color(0x33FFFFFF))
             }
         }
 
@@ -372,4 +381,26 @@ private fun SimilarRow(item: Item, nav: Navigator) {
             }
         }
     }
+}
+
+/** Watched and favourite, beside Play. Filled when on; the change shows at once. */
+@Composable
+private fun MarkButtons(source: Item) {
+    val item = rememberLiveItem(source)
+    val actions = LocalGraph.current.actions
+    val accent = LocalAccent.current
+    val watched = item.isWatched
+    RoundButton(
+        if (watched) Lucide.CheckCircle else Lucide.Check,
+        if (watched) "Mark as unwatched" else "Mark as watched",
+        { actions.setPlayed(item, !watched) }, diameter = 46.dp,
+        iconTint = if (watched) accent.hover else FF.Text,
+    )
+    val favorite = item.isFavorite
+    RoundButton(
+        if (favorite) Lucide.HeartFilled else Lucide.Heart,
+        if (favorite) "Remove from favourites" else "Add to favourites",
+        { actions.setFavorite(item, !favorite) }, diameter = 46.dp,
+        iconTint = if (favorite) accent.hover else FF.Text,
+    )
 }

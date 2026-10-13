@@ -1,11 +1,14 @@
 package com.veeha.fastfin.ui.player
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +37,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.PlatformTextStyle
@@ -182,6 +189,9 @@ internal fun PlayerControls(
     buffered: () -> Long,
     durationMs: Long,
     scrubbing: Boolean,
+    /** Trickplay thumbnail for the scrub position, shown above the playhead while dragging. */
+    scrubPreview: ImageBitmap? = null,
+    scrubPreviewAspect: Float = 16f / 9f,
     pipSupported: Boolean,
     /** Big transport in the middle of the screen instead of the bottom band. */
     centered: Boolean = false,
@@ -241,7 +251,20 @@ internal fun PlayerControls(
             // Bottom: the timeline, then transport (bottom layout) and tracks in one band.
             if (ready) {
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-                    Scrubber(position, buffered, durationMs, scrubbing, onScrub, onScrubEnd, Modifier.fillMaxWidth())
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        Scrubber(position, buffered, durationMs, scrubbing, onScrub, onScrubEnd, Modifier.fillMaxWidth())
+                        if (scrubbing && scrubPreview != null) {
+                            // Follows the finger, kept on screen at either end.
+                            val width = if (m == HudMetrics.Wide) 224.dp else 176.dp
+                            val height = width / scrubPreviewAspect
+                            val fraction = (position().toFloat() / durationMs.coerceAtLeast(1)).coerceIn(0f, 1f)
+                            val x = (maxWidth * fraction - width / 2).coerceIn(0.dp, (maxWidth - width).coerceAtLeast(0.dp))
+                            ScrubPreview(
+                                scrubPreview, formatClock(position()),
+                                Modifier.offset(x = x, y = -(height + 14.dp)).size(width, height),
+                            )
+                        }
+                    }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
                         Text(formatClock(position()), color = FF.Text, style = Clock)
                         Spacer(Modifier.weight(1f))
@@ -293,9 +316,8 @@ private fun CenterButton(
             .background(Color(0x4D000000)),
         contentAlignment = Alignment.Center,
     ) {
-        if (busy) {
-            CircularProgressIndicator(Modifier.size(diameter * 0.4f), color = Color.White, strokeWidth = 3.dp)
-        } else {
+        // Busy: an empty disc. The overlay's single spinner is drawn inside it.
+        if (!busy) {
             Icon(icon, label, Modifier.padding(start = iconOffset).size(diameter * 0.46f), tint = FF.Text)
             overlay?.invoke()
         }
@@ -391,4 +413,24 @@ internal enum class HudMetrics(
         centerPlay = 76.dp, centerSkip = 58.dp, centerGap = 40.dp),
     Wide(sideMargin = 40.dp, edgeMargin = 24.dp, title = 26.sp, subtitle = 15.sp, titleTop = 13.dp, icon = 26.dp, touch = 52.dp,
         centerPlay = 96.dp, centerSkip = 72.dp, centerGap = 64.dp),
+}
+
+/** The frame at the scrub position, with its time, floating above the playhead. */
+@Composable
+private fun ScrubPreview(frame: ImageBitmap, time: String, modifier: Modifier) {
+    Box(
+        modifier
+            .shadow(16.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.Black)
+            .border(1.5.dp, FF.Text.copy(alpha = 0.85f), RoundedCornerShape(10.dp)),
+    ) {
+        Image(frame, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, filterQuality = FilterQuality.Medium)
+        Text(
+            time,
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)
+                .background(Color(0xB3000000), RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp),
+            color = FF.Text, style = Clock,
+        )
+    }
 }

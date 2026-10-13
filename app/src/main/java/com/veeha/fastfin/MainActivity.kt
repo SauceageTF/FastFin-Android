@@ -32,6 +32,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.veeha.fastfin.data.isEpisode
 import com.veeha.fastfin.ui.FastFinRoot
 import com.veeha.fastfin.ui.PipController
 import kotlinx.coroutines.flow.combine
@@ -71,6 +72,8 @@ class MainActivity : ComponentActivity() {
                 CONTROL_PLAY_PAUSE -> graph.playback.togglePlay()
                 CONTROL_BACK -> graph.playback.seekBy(-10_000)
                 CONTROL_FORWARD -> graph.playback.seekBy(10_000)
+                CONTROL_PREVIOUS -> graph.playback.playPrevious()
+                CONTROL_NEXT -> graph.playback.playNext()
             }
         }
     }
@@ -111,13 +114,15 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.CREATED) {
                 combine(
-                    graph.playback.state,
+                    combine(graph.playback.state, graph.playback.adjacent) { ui, adjacent -> ui to adjacent },
                     graph.playback.isPlaying,
                     graph.playback.videoAspect,
                     graph.settings.flow,
                     snapshotFlow { inPip },
-                ) { ui, playing, aspect, settings, pip ->
+                ) { (ui, adjacent), playing, aspect, settings, pip ->
                     WindowState(
+                        episode = ui?.item?.isEpisode == true,
+                        hasNext = adjacent.next != null,
                         active = ui != null,
                         expanded = ui?.expanded == true,
                         playing = playing,
@@ -165,10 +170,14 @@ class MainActivity : ComponentActivity() {
             .setAspectRatio(Rational((aspect * 1000).roundToInt(), 1000))
             .setActions(
                 listOf(
-                    action(R.drawable.ic_pip_back, "Back 10 seconds", CONTROL_BACK),
+                    // Episodes: previous and next episode. Films (and a finale's last
+                    // button): 10 seconds back and forward.
+                    if (state.episode) action(R.drawable.ic_pip_previous, "Previous episode", CONTROL_PREVIOUS)
+                    else action(R.drawable.ic_pip_back, "Back 10 seconds", CONTROL_BACK),
                     if (state.playing) action(R.drawable.ic_pip_pause, "Pause", CONTROL_PLAY_PAUSE)
                     else action(R.drawable.ic_pip_play, "Play", CONTROL_PLAY_PAUSE),
-                    action(R.drawable.ic_pip_forward, "Forward 10 seconds", CONTROL_FORWARD),
+                    if (state.hasNext) action(R.drawable.ic_pip_next, "Next episode", CONTROL_NEXT)
+                    else action(R.drawable.ic_pip_forward, "Forward 10 seconds", CONTROL_FORWARD),
                 )
             )
         sourceRect?.takeIf { !it.isEmpty }?.let(builder::setSourceRectHint)
@@ -205,6 +214,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private data class WindowState(
+        val episode: Boolean = false,
+        val hasNext: Boolean = false,
         val active: Boolean = false,
         val expanded: Boolean = false,
         val playing: Boolean = false,
@@ -220,5 +231,7 @@ class MainActivity : ComponentActivity() {
         const val CONTROL_PLAY_PAUSE = 1
         const val CONTROL_BACK = 2
         const val CONTROL_FORWARD = 3
+        const val CONTROL_PREVIOUS = 4
+        const val CONTROL_NEXT = 5
     }
 }

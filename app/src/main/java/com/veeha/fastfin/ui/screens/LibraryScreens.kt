@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veeha.fastfin.data.Item
+import com.veeha.fastfin.data.Load
 import com.veeha.fastfin.data.Library
 import com.veeha.fastfin.data.LibraryQuery
 import com.veeha.fastfin.data.LibrarySort
@@ -89,12 +91,17 @@ import com.veeha.fastfin.ui.rememberLoad
 import com.veeha.fastfin.ui.theme.FF
 import com.veeha.fastfin.ui.theme.LocalAccent
 import com.veeha.fastfin.ui.theme.color
+import coil3.SingletonImageLoader
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val LIBRARY_TTL = 10 * Repository.MINUTE
 private const val PAGE_SIZE = 100
+/** Posters fetched ahead of the last visible tile: about four rows on a phone. */
+private const val PREFETCH_AHEAD = 18
 
 fun libraryIcon(type: String?): ImageVector = when (type) {
     "movies" -> Lucide.Film
@@ -311,6 +318,32 @@ fun LibraryGridScreen(route: Route.LibraryGrid, nav: Navigator, bottomInset: Dp)
 
     val layout = LocalLayout.current
     val columnWidth = layout.gridImage
+    val genres by rememberLoad("genres:${route.id}", LIBRARY_TTL) { graph.api.genres(route.id) }
+
+    // Posters for the next rows download before they scroll into view, so the
+    // grid never shows empty tiles while scrolling. Disk cache only: nothing
+    // is held in memory until a tile actually shows it.
+    val context = LocalContext.current
+    val images = LocalImages.current
+    val posterPx = columnWidth.px()
+    LaunchedEffect(paged, grid) {
+        val loader = SingletonImageLoader.get(context)
+        var fetchedTo = 0
+        snapshotFlow { (grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) to (paged.items?.size ?: 0) }
+            .distinctUntilChanged()
+            .collect { (last, size) ->
+                val list = paged.items ?: return@collect
+                val end = minOf(size, last + PREFETCH_AHEAD)
+                for (i in maxOf(fetchedTo, last + 1) until end) {
+                    val url = images.poster(list[i], posterPx) ?: continue
+                    loader.enqueue(
+                        ImageRequest.Builder(context).data(url).size(posterPx, posterPx * 3 / 2)
+                            .memoryCachePolicy(CachePolicy.DISABLED).build()
+                    )
+                }
+                fetchedTo = maxOf(fetchedTo, end)
+            }
+    }
 
     Column(Modifier.fillMaxSize()) {
         TopBar(route.name) { nav.pop() }
@@ -334,7 +367,7 @@ fun LibraryGridScreen(route: Route.LibraryGrid, nav: Navigator, bottomInset: Dp)
             if (tv) ToggleChip("Airing", airing) { airing = !airing }
             else ToggleChip("In progress", inProgress) { inProgress = !inProgress }
             ToggleChip("Favorites", favorites) { favorites = !favorites }
-            GenreChip(route.id, genre) { genre = it }
+            GenreChip(genres, genre) { genre = it }
             if (query.filtered) {
                 ChipBase(on = false, onClick = {
                     unwatched = false
@@ -457,10 +490,9 @@ private fun SortChip(sort: LibrarySort, descending: Boolean, onPick: (LibrarySor
     }
 }
 
-/** Genres that occur in this library, loaded the first time the menu opens. */
+/** Genres that occur in this library, loaded with the screen so the menu opens complete. */
 @Composable
-private fun GenreChip(libraryId: String, genre: String?, onPick: (String?) -> Unit) {
-    val graph = LocalGraph.current
+private fun GenreChip(genres: Load<List<String>>, genre: String?, onPick: (String?) -> Unit) {
     val accent = LocalAccent.current.color
     var open by remember { mutableStateOf(false) }
     val on = genre != null
@@ -471,7 +503,6 @@ private fun GenreChip(libraryId: String, genre: String?, onPick: (String?) -> Un
             Icon(Lucide.ChevronDown, null, Modifier.size(13.dp), tint = if (on) FF.OnLight else FF.TextSecondary)
         }
         Menu(open, { open = false }) {
-            val genres by rememberLoad("genres:$libraryId", LIBRARY_TTL) { graph.api.genres(libraryId) }
             val list = genres.data
             MenuHeader("Genre")
             DropdownMenuItem(
@@ -507,8 +538,12 @@ private fun MenuCheck(on: Boolean, tint: Color) {
 
 @Composable
 private fun Menu(open: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    // Each opening starts at the top, never where the last one was scrolled to.
+    val scroll = rememberScrollState()
+    LaunchedEffect(open) { if (open) scroll.scrollTo(0) }
     DropdownMenu(
         expanded = open,
+        scrollState = scroll,
         onDismissRequest = onDismiss,
         shape = FF.ShapeLg,
         containerColor = FF.Panel,

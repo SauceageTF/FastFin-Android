@@ -9,6 +9,10 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,10 +53,20 @@ class Repository(private val scope: CoroutineScope, private val snapshotDir: Fil
         synchronized(memory) { memory[key] = Entry(value, SystemClock.elapsedRealtime()) }
     }
 
+    private val _changes = MutableStateFlow(0)
+
+    /** Bumps whenever data is marked stale. Screens on show key their loads on
+     * it, so they refresh in place (still showing the old copy meanwhile)
+     * instead of waiting to be rebuilt. */
+    val changes: StateFlow<Int> = _changes.asStateFlow()
+
     /** Keeps the data (it is still the best we have) but forces the next
      * observer to refresh it. Used after playback changes watch state. */
-    fun markStale(prefix: String) {
-        synchronized(memory) { memory.forEach { (key, entry) -> if (key.startsWith(prefix)) entry.at = 0 } }
+    fun markStale(vararg prefixes: String) {
+        synchronized(memory) {
+            memory.forEach { (key, entry) -> if (prefixes.any { key.startsWith(it) }) entry.at = 0 }
+        }
+        _changes.update { it + 1 }
     }
 
     fun clear() {

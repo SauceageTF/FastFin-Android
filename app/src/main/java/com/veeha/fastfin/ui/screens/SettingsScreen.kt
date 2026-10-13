@@ -28,6 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,6 +58,8 @@ import com.veeha.fastfin.BuildConfig
 import com.veeha.fastfin.data.AccentName
 import com.veeha.fastfin.data.HdrMode
 import com.veeha.fastfin.data.PlayerLayout
+import com.veeha.fastfin.data.SkipMode
+import com.veeha.fastfin.data.SUBTITLES_OFF_PREF
 import com.veeha.fastfin.data.StreamingQuality
 import com.veeha.fastfin.playback.DeviceCapabilities
 import com.veeha.fastfin.playback.HdrType
@@ -157,6 +163,50 @@ fun SettingsScreen(bottomInset: Dp) {
             Segmented(PlayerLayout.entries, settings.playerLayout, { it.label }) { layout ->
                 tick()
                 graph.settings.update { it.copy(playerLayout = layout) }
+            }
+        }
+
+        Section(
+            "Skip intros",
+            when (settings.skipIntros) {
+                SkipMode.Button -> "A Skip Intro button appears while an intro or recap plays."
+                SkipMode.Auto -> "Intros and recaps are skipped the moment they start. Seek back to watch one anyway."
+                SkipMode.Off -> "Intros and recaps play through. Credits still offer a skip."
+            } + " Timings come from the server; install the Intro Skipper plugin on Jellyfin to detect them.",
+        ) {
+            Segmented(SkipMode.entries, settings.skipIntros, { it.label }) { mode ->
+                tick()
+                graph.settings.update { it.copy(skipIntros = mode) }
+            }
+        }
+
+        Section(
+            "Languages",
+            "Used when a video starts, if it has that language. Picking a track in the player remembers it for that show instead.",
+        ) {
+            LanguageRow(Lucide.Speaker, "Audio", settings.audioLanguage, allowOff = false) { code ->
+                graph.settings.update { it.copy(audioLanguage = code) }
+            }
+            Divider()
+            LanguageRow(Lucide.Captions, "Subtitles", settings.subtitleLanguage, allowOff = true) { code ->
+                graph.settings.update { it.copy(subtitleLanguage = code) }
+            }
+        }
+
+        Section(
+            "Autoplay",
+            "When the credits start, or an episode ends, the next one plays after a short countdown. " +
+                "After three episodes in a row untouched, it waits for you instead.",
+        ) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Lucide.Play, null, Modifier.size(15.dp), tint = FF.TextSecondary)
+                Spacer(Modifier.width(12.dp))
+                Text("Play next episode", Modifier.weight(1f), color = FF.Text, fontSize = 15.sp)
+                Switch(
+                    checked = settings.autoplayNext,
+                    onCheckedChange = { on -> graph.settings.update { it.copy(autoplayNext = on) } },
+                    colors = SwitchDefaults.colors(checkedTrackColor = LocalAccent.current.color, checkedThumbColor = FF.OnLight),
+                )
             }
         }
 
@@ -310,6 +360,71 @@ private fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, o
                 contentAlignment = Alignment.Center,
             ) {
                 Text(label(option), color = if (on) FF.OnLight else FF.Text, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** Common languages, the phone's own first. ISO 639-2 codes, as Jellyfin labels streams. */
+private fun languageChoices(): List<String> {
+    val common = listOf("eng", "jpn", "spa", "fra", "deu", "ita", "por", "kor", "zho", "hin", "rus", "ara", "nld", "swe", "pol", "tur")
+    val own = runCatching { java.util.Locale.getDefault().isO3Language }.getOrNull()?.takeIf { it.length == 3 }
+    return (listOfNotNull(own) + common).distinct()
+}
+
+private fun languageName(code: String): String =
+    java.util.Locale.forLanguageTag(code).getDisplayLanguage(java.util.Locale.getDefault()).ifBlank { code }
+        .replaceFirstChar { it.titlecase(java.util.Locale.getDefault()) }
+
+/** A settings row whose value opens a menu of languages; "Server default" leaves Jellyfin to choose. */
+@Composable
+private fun LanguageRow(icon: ImageVector, label: String, value: String?, allowOff: Boolean, onPick: (String?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val shown = when (value) {
+        null -> "Server default"
+        SUBTITLES_OFF_PREF -> "Off"
+        else -> languageName(value)
+    }
+    Box {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 50.dp).pressable(pressedScale = 0.99f) { open = true }.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.width(26.dp), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(17.dp), tint = FF.TextSecondary) }
+            Spacer(Modifier.width(12.dp))
+            Text(label, Modifier.weight(1f), color = FF.Text, fontSize = 15.sp)
+            Text(shown, color = FF.TextDim, fontSize = 14.sp)
+            Spacer(Modifier.width(6.dp))
+            Icon(Lucide.ChevronDown, null, Modifier.size(13.dp), tint = FF.TextDim)
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = FF.ShapeLg,
+            containerColor = FF.Panel,
+            border = BorderStroke(1.dp, FF.Rim),
+            offset = DpOffset(x = 180.dp, y = 0.dp),
+            modifier = Modifier.heightIn(max = 400.dp),
+        ) {
+            val options = listOf<String?>(null) + (if (allowOff) listOf(SUBTITLES_OFF_PREF) else emptyList()) + languageChoices()
+            for (code in options) {
+                val name = when (code) {
+                    null -> "Server default"
+                    SUBTITLES_OFF_PREF -> "Off"
+                    else -> languageName(code)
+                }
+                DropdownMenuItem(
+                    text = { Text(name, color = FF.Text, fontSize = 14.sp) },
+                    leadingIcon = {
+                        Box(Modifier.size(16.dp)) {
+                            if (code == value) Icon(Lucide.Check, null, Modifier.size(16.dp), tint = LocalAccent.current.color)
+                        }
+                    },
+                    onClick = {
+                        onPick(code)
+                        open = false
+                    },
+                )
             }
         }
     }
