@@ -66,6 +66,7 @@ import com.veeha.fastfin.playback.PlayMethod
 import com.veeha.fastfin.playback.PlaybackManager
 import com.veeha.fastfin.playback.PlaybackSource
 import com.veeha.fastfin.playback.PlayerUi
+import com.veeha.fastfin.playback.PlaybackStats
 import com.veeha.fastfin.ui.LocalGraph
 import com.veeha.fastfin.ui.LocalSession
 import com.veeha.fastfin.playback.TrickplaySource
@@ -320,8 +321,10 @@ private fun TrackMenu(playback: PlaybackManager, source: PlaybackSource?, open: 
                     }
                 }
                 HorizontalDivider(color = FF.Rim)
+                val stats by playback.stats.collectAsStateWithLifecycle()
                 Text(
-                    source.summary, Modifier.padding(horizontal = 16.dp, vertical = 10.dp).widthIn(max = 280.dp),
+                    listOfNotNull(source.summary, statsLine(stats)).joinToString("\n"),
+                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp).widthIn(max = 280.dp),
                     color = FF.TextDim, fontSize = 11.5.sp, lineHeight = 15.sp,
                 )
             }
@@ -393,4 +396,18 @@ private fun SpeedPill(label: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Text(label, color = if (selected) FF.OnLight else FF.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
+}
+
+/** "Hardware decoder · 23.976 fps · 0 dropped frames": what to check when playback stutters. */
+private fun statsLine(stats: PlaybackStats): String? {
+    if (stats.decoder == null) return null
+    val kind = when (stats.hardware) {
+        true -> "hardware decoder"
+        false -> "software decoder"
+        null -> "decoder"
+    }
+    val fps = stats.frameRate?.let { "%.3f".format(it).trimEnd('0').trimEnd('.') + " fps" }
+    val dropped = if (stats.droppedFrames == 1) "1 dropped frame" else "${stats.droppedFrames} dropped frames"
+    val decoded = stats.codec?.let { "$it $kind" } ?: kind.replaceFirstChar(Char::uppercase)
+    return listOfNotNull(decoded, fps, dropped).joinToString("  ·  ")
 }

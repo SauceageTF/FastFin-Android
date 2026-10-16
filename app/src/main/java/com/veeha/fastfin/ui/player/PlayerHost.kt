@@ -64,6 +64,8 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.SubtitleView
+import io.github.peerless2012.ass.media.AssHandler
+import io.github.peerless2012.ass.media.widget.AssSubtitleView
 import com.veeha.fastfin.data.Item
 import com.veeha.fastfin.data.episodeLabel
 import com.veeha.fastfin.playback.PlayMethod
@@ -191,7 +193,8 @@ fun PlayerHost(miniBottom: Dp, inPip: Boolean, miniWidth: Dp? = null) {
         }
 
         if (ui.expanded && !inPip && player != null && ui.error == null) {
-            Subtitles(player, Modifier.placeAt(full))
+            val ass by playback.assHandler.collectAsStateWithLifecycle()
+            key(player, ass) { Subtitles(player, ass, Modifier.placeAt(full)) }
         }
 
         if (!ui.expanded && !inPip) MiniControls(playback, ui, player, geometry, progress)
@@ -250,10 +253,14 @@ private class CueBridge : Player.Listener {
     }
 }
 
-/** Media3's SubtitleView: styled text plus bitmap subtitles (PGS, VobSub, DVB)
- * rendered on the device, so they never cost the server a burn-in transcode. */
+/**
+ * Subtitles, all drawn on the device so they never cost the server a burn-in:
+ * Media3's SubtitleView for text (SRT, VTT, TTML, in your caption style) and
+ * bitmaps (PGS, VobSub, DVB, pixel for pixel), with libass inside it for
+ * ASS/SSA in their own styling.
+ */
 @Composable
-private fun Subtitles(player: ExoPlayer, modifier: Modifier) {
+private fun Subtitles(player: ExoPlayer, ass: AssHandler?, modifier: Modifier) {
     val bridge = remember { CueBridge() }
     DisposableEffect(player) {
         player.addListener(bridge)
@@ -267,6 +274,7 @@ private fun Subtitles(player: ExoPlayer, modifier: Modifier) {
                 setBottomPaddingFraction(0.06f)
                 setCues(player.currentCues.cues)
                 bridge.view = this
+                if (ass != null) addView(AssSubtitleView(context, ass))
             }
         },
         modifier = modifier,

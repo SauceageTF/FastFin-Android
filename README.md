@@ -14,8 +14,10 @@ Open the folder in Android Studio (Ladybug or newer) and press Run. From a termi
 ./gradlew :app:assembleRelease
 ```
 
-The release APK is at `app/build/outputs/apk/release/app-release.apk`. For easy
-sideloading it is signed with the debug key; use a real keystore before
+One release APK is built per CPU type in `app/build/outputs/apk/release/`:
+`app-arm64-v8a-release.apk` for virtually every phone and tablet, `app-armeabi-v7a-release.apk`
+for older 32-bit ones (and an x86_64 build for the emulator). For easy
+sideloading they are signed with the debug key; use a real keystore before
 publishing anywhere. Requires JDK 17–21 (Gradle 8.14 does not run on JDK 25).
 
 ## What came from where

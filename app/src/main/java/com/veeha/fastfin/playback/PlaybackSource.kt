@@ -40,7 +40,27 @@ data class MediaSourceInfo(
     val defaultAudioStreamIndex: Int? = null,
     val defaultSubtitleStreamIndex: Int? = null,
     val mediaStreams: List<MediaStreamInfo> = emptyList(),
+    /** Files inside the container: for anime, the fonts its ASS subtitles are styled with. */
+    val mediaAttachments: List<MediaAttachmentInfo> = emptyList(),
 )
+
+@Serializable
+data class MediaAttachmentInfo(
+    val index: Int = 0,
+    val codec: String? = null,
+    val fileName: String? = null,
+    val mimeType: String? = null,
+    val deliveryUrl: String? = null,
+) {
+    val isFont: Boolean
+        get() = mimeType?.contains("font", ignoreCase = true) == true ||
+            codec?.lowercase() in setOf("ttf", "otf") ||
+            fileName?.substringAfterLast('.')?.lowercase() in setOf("ttf", "otf", "ttc")
+}
+
+/** A font for libass: its file name (which ASS styles refer to) and where to fetch it. */
+@Immutable
+data class FontAttachment(val name: String, val url: String)
 
 @Serializable
 data class MediaStreamInfo(
@@ -97,7 +117,12 @@ data class PlaybackSource(
     /** "HDR10", "Dolby Vision"... when the picture reaches the device in HDR. */
     val hdr: String?,
     val isFallback: Boolean = false,
-)
+    /** Fonts to fetch for libass when the subtitles arrive as a separate file (not inside the MKV). */
+    val fonts: List<FontAttachment> = emptyList(),
+) {
+    /** Has ASS/SSA subtitles, which libass renders (and which need a fresh start, not a queue). */
+    val hasAss: Boolean get() = subtitleTracks.any { it.codec == "ass" || it.codec == "ssa" }
+}
 
 class PlaybackError(message: String, val reasons: List<String> = emptyList()) : Exception(message)
 
@@ -156,7 +181,9 @@ object Negotiator {
             ?: throw PlaybackError("The server didn't return a media source for this item.")
 
         val playSessionId = response.playSessionId ?: UUID.randomUUID().toString().replace("-", "")
-        val reasons = parseReasons(source.transcodeReasons)
+        // Some servers leave TranscodeReasons off the media source but always put
+        // them in the transcoding URL; without them a re-encode looked like a remux.
+        val reasons = parseReasons(source.transcodeReasons).ifEmpty { reasonsFromUrl(source.transcodingUrl) }
 
         val audio = ArrayList<TrackOption>()
         val subtitles = ArrayList<TrackOption>()
@@ -195,6 +222,12 @@ object Negotiator {
             url = url, isHls = isHls, playMethod = method, mediaSourceId = source.id, playSessionId = playSessionId,
             audioTracks = audio, subtitleTracks = subtitles, selectedAudio = selectedAudio,
             selectedSubtitle = selectedSubtitle, transcodeReasons = reasons, summary = summary, hdr = hdrOut,
+            // Direct play reads the fonts out of the MKV itself.
+            fonts = if (method == PlayMethod.DirectPlay) emptyList() else source.mediaAttachments.filter { it.isFont }.mapNotNull { a ->
+                val name = a.fileName ?: return@mapNotNull null
+                val path = a.deliveryUrl ?: "/Videos/$itemId/${source.id}/Attachments/${a.index}"
+                FontAttachment(name, if (path.startsWith("http")) path else session.serverUrl + path)
+            },
         )
 
         if (allowDirectPlay && source.supportsDirectPlay) {
@@ -281,6 +314,13 @@ object Negotiator {
         val title = stream.displayTitle
             ?: listOfNotNull(stream.language, stream.codec?.uppercase()).joinToString(" · ").ifEmpty { "${stream.type} ${stream.index}" }
         return TrackOption(stream.index, title, stream.codec?.lowercase(), stream.language, stream.isDefault, delivery, url)
+    }
+
+    private fun reasonsFromUrl(url: String?): List<String> {
+        val query = url?.substringAfter('?', "") ?: return emptyList()
+        val value = query.split('&').firstOrNull { it.startsWith("TranscodeReasons=", ignoreCase = true) }
+            ?.substringAfter('=') ?: return emptyList()
+        return java.net.URLDecoder.decode(value, "UTF-8").split(',').map { it.trim() }.filter { it.isNotEmpty() }
     }
 
     private fun parseReasons(raw: JsonElement?): List<String> = when (raw) {

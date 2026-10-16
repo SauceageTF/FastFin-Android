@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FastFin "sunset fin": a fin cutting across the sun as it sinks into the
+     water. 108dp adaptive-icon canvas; everything sits inside the 66dp safe
+     zone (a circle of radius 33 at the centre), so no launcher mask crops it.
+     The fin is a hole in the sun, so the same shapes work as the themed
+     (monochrome) icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group>
+        <!-- The sun. -->
+        <clip-path android:pathData="M23,54 A31,31 0 1,1 85,54 A31,31 0 1,1 23,54 Z" />
+        <!-- Above the waterline, with the fin cut out of it. -->
+        <path
+            android:fillColor="#FFFF5A1F"
+            android:fillType="evenOdd"
+            android:pathData="M0,0 H108 V63 H0 Z M30,63 C40,56 48,40 69,27 C64,41 64,53 75,63 Z" />
+        <!-- Below it, the sun breaks up into stripes on the water. -->
+        <path
+            android:fillColor="#FFFF5A1F"
+            android:pathData="M0,65.4 H108 V70 H0 Z M0,72.8 H108 V76.6 H0 Z M0,79.8 H108 V90 H0 Z" />
+    </group>
+</vector>

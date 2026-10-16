@@ -6,6 +6,8 @@ import android.app.Application
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
+import android.media.MediaCodecList
+import android.os.Build
 import android.os.Looper
 import android.os.SystemClock
 import androidx.annotation.OptIn
@@ -30,7 +32,16 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.PlayerMessage
+import androidx.media3.exoplayer.DecoderReuseEvaluation
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.common.Format
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
+import io.github.peerless2012.ass.media.AssHandler
+import io.github.peerless2012.ass.media.factory.AssRenderersFactory
+import io.github.peerless2012.ass.media.kt.withAssMkvSupport
+import io.github.peerless2012.ass.media.parser.AssSubtitleParserFactory
+import io.github.peerless2012.ass.media.type.AssRenderType
 import androidx.media3.common.ForwardingSimpleBasePlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
@@ -50,7 +61,10 @@ import com.veeha.fastfin.data.isEpisode
 import com.veeha.fastfin.data.isPlayable
 import com.veeha.fastfin.data.resumeMs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
+import okhttp3.Request
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,6 +88,21 @@ data class PlayerUi(
     /** Full screen (true) or the mini player (false). */
     val expanded: Boolean = true,
     val notice: String? = null,
+)
+
+/**
+ * How the picture is actually being decoded, for the track menu and for
+ * diagnosing stutter: the decoder (hardware or software), the stream's frame
+ * rate, and frames dropped since this video started.
+ */
+@Immutable
+data class PlaybackStats(
+    val decoder: String? = null,
+    val hardware: Boolean? = null,
+    /** The codec actually being decoded, which a transcode may have changed. */
+    val codec: String? = null,
+    val frameRate: Float? = null,
+    val droppedFrames: Int = 0,
 )
 
 /** The episodes before and after the one playing; null at either end of a show, or for a film. */
@@ -106,6 +135,15 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
 
     private val _player = MutableStateFlow<ExoPlayer?>(null)
     val player: StateFlow<ExoPlayer?> = _player.asStateFlow()
+
+    /** Downloaded subtitle fonts by item, for the playing episode and the next one. */
+    private val fontCache = object : LinkedHashMap<String, List<Pair<String, ByteArray>>>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Pair<String, ByteArray>>>?) = size > 2
+    }
+
+    /** libass for the current player; the subtitle overlay attaches to it. */
+    private val _assHandler = MutableStateFlow<AssHandler?>(null)
+    val assHandler: StateFlow<AssHandler?> = _assHandler.asStateFlow()
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -154,6 +192,9 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
     private var autoplayChain = 0
 
     private var mediaSession: MediaSession? = null
+    private val _stats = MutableStateFlow(PlaybackStats())
+    val stats: StateFlow<PlaybackStats> = _stats.asStateFlow()
+
     /** For PlaybackService; null while nothing is open. */
     val session: MediaSession? get() = mediaSession
     private var sessionPlayer: SessionPlayer? = null
@@ -220,6 +261,9 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
         mediaSession?.release()
         mediaSession = null
         player?.release()
+        // After the player, whose subtitle renderer still holds it until then.
+        _assHandler.value?.release()
+        _assHandler.value = null
         app.stopService(Intent(app, PlaybackService::class.java))
         _isPlaying.value = false
         _isBuffering.value = false
@@ -301,10 +345,59 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
             // one: just move on. The switch-over finishes in onMediaItemTransition.
             player.seekTo(queuedAt, ready.startMs)
             player.play()
+        } else if (ready != null) {
+            startPrepared(ready, expanded = _state.value?.expanded ?: true)
         } else {
             // Stay wherever the player is: full screen, mini player or Picture in Picture.
             start(next, restart = false, expanded = _state.value?.expanded ?: true)
         }
+    }
+
+    /**
+     * Fonts for ASS subtitles that arrive as their own file (a transcoded
+     * stream), fetched from the server's copy of the MKV's attachments. Without
+     * them libass falls back to a default font and typeset signs lose their look.
+     * Direct play needs none of this: libass reads the fonts from the file.
+     */
+    private suspend fun loadFonts(itemId: String, source: PlaybackSource) {
+        if (!source.hasAss || source.fonts.isEmpty() || fontCache.containsKey(itemId)) return
+        val fonts = withContext(Dispatchers.IO) {
+            var total = 0L
+            source.fonts.mapNotNull { font ->
+                if (total > MAX_FONT_BYTES) return@mapNotNull null
+                runCatching {
+                    graph.http.newCall(Request.Builder().url(font.url).build()).execute().use { response ->
+                        if (!response.isSuccessful) null else response.body?.bytes()
+                    }
+                }.getOrNull()?.let { bytes ->
+                    total += bytes.size
+                    font.name to bytes
+                }
+            }
+        }
+        fontCache[itemId] = fonts
+    }
+
+    /** Right after setMediaItem, which resets libass for the new video. */
+    private fun addFonts(itemId: String) {
+        val ass = _assHandler.value ?: return
+        fontCache[itemId]?.forEach { (name, bytes) -> ass.addFont(name, bytes) }
+    }
+
+    /** Starts an episode negotiated during the credits but not queued in the player. */
+    private fun startPrepared(ready: Prepared, expanded: Boolean) {
+        // Taken first, so stopSession doesn't treat it as unused and stop its transcode.
+        prepared = null
+        stopSession()
+        selection = ready.selection
+        attempt = 0
+        ioRetries = 0
+        diagnostics.clear()
+        _firstFrame.value = false
+        _videoAspect.value = 16f / 9f
+        _state.value = PlayerUi(item = ready.item, source = ready.source, expanded = expanded)
+        loadExtras(ready.item)
+        play(ready.item, ready.source, ready.startMs)
     }
 
     /** Previous on a headset, notification or PiP: the last episode, or the start of this one if it's under way. */
@@ -453,7 +546,11 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
                     stopEncoding(source)
                     return@launch
                 }
-                player.addMediaItem(mediaItem(item, source))
+                // libass resets as the player moves to its next item, losing ASS tracks
+                // read in advance: those episodes are started fresh from this
+                // negotiated stream instead (still no wait for the server).
+                loadFonts(item.id, source)
+                if (!source.hasAss) player.addMediaItem(mediaItem(item, source))
                 prepared = Prepared(item, source, start, selection)
             } catch (e: CancellationException) {
                 throw e
@@ -490,6 +587,7 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
     /** The queued episode just became the current one: move everything over. The player, decoder and surface stay. */
     private fun completeHandoff(ready: Prepared) {
         val player = _player.value ?: return
+        _stats.update { PlaybackStats(decoder = it.decoder, hardware = it.hardware) }
         prepared = null
         resetEpisode()
         selection = ready.selection
@@ -579,6 +677,8 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
                 graph.api, session, capabilities, graph.settings.value, item.id, start, selection, allowDirectPlay,
             )
             if (_state.value?.item?.id != seed.id) return
+            loadFonts(item.id, source)
+            if (_state.value?.item?.id != seed.id) return
             _state.update { it?.copy(item = item, source = source, error = null) }
             play(item, source, start)
         } catch (e: CancellationException) {
@@ -606,6 +706,7 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
 
     private fun play(item: Item, source: PlaybackSource, startMs: Long) {
         val player = ensurePlayer()
+        _stats.value = PlaybackStats()
         dropPrepared()
         tracksApplied = false
         _firstFrame.value = false
@@ -614,6 +715,7 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             .build()
         player.setMediaItem(mediaItem(item, source), startMs)
+        addFonts(item.id)
         player.prepare()
         player.play()
         reportStart(item, source)
@@ -637,6 +739,7 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             .build()
         player.setMediaItem(mediaItem(item, source), positionMs)
+        addFonts(item.id)
         player.prepare()
         player.playWhenReady = playWhenReady
         armSegments()
@@ -705,15 +808,28 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
         // The app's OkHttp client: same connection pool as the API, and the
         // auth interceptor covers direct play, playlists and segments.
         val dataSource = DefaultDataSource.Factory(app, OkHttpDataSource.Factory(graph.http))
-        val renderers = DefaultRenderersFactory(app)
-            // If a hardware decoder refuses to initialise, try the next one
-            // before giving up on direct play.
-            .setEnableDecoderFallback(true)
+        // ASS/SSA through libass: the subtitles' own fonts, positions, karaoke and
+        // animation, drawn on a GPU thread above the video. Media3's own SSA
+        // support turns each sign into styled text on the main thread, which both
+        // loses the typesetting and stutters on heavily typeset anime. Fonts
+        // attached to MKV files are loaded as the file is read.
+        val ass = AssHandler(AssRenderType.OVERLAY_OPEN_GL)
+        val assParsers = AssSubtitleParserFactory(ass)
+        val renderers = AssRenderersFactory(
+            ass,
+            DefaultRenderersFactory(app)
+                // If a hardware decoder refuses to initialise, try the next one
+                // before giving up on direct play.
+                .setEnableDecoderFallback(true),
+        )
+        val mediaSources = DefaultMediaSourceFactory(dataSource, DefaultExtractorsFactory().withAssMkvSupport(assParsers, ass))
+            // Side-loaded .ass files (next to a transcoded stream) go through libass too.
+            .setSubtitleParserFactory(assParsers)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 50_000, 1_000, 2_000)
             .build()
         val player = ExoPlayer.Builder(app, renderers)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
+            .setMediaSourceFactory(mediaSources)
             .setLoadControl(loadControl)
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
@@ -724,6 +840,10 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
             .setSeekForwardIncrementMs(10_000)
             .build()
         player.addListener(listener)
+        player.addAnalyticsListener(statsListener)
+        // After our listener, so a new video's fonts are added after libass resets.
+        ass.init(player)
+        _assHandler.value = ass
         player.setPlaybackSpeed(_speed.value)
         // A queued next episode never starts by itself: the Up Next countdown
         // (and "Watch credits", and the still-watching check) decide when.
@@ -777,6 +897,25 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
                 else -> return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
             }
             return Futures.immediateVoidFuture()
+        }
+    }
+
+    private val statsListener = object : AnalyticsListener {
+        override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+            val hardware = runCatching {
+                MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.firstOrNull { it.name == decoderName }?.let { info ->
+                    if (Build.VERSION.SDK_INT >= 29) info.isHardwareAccelerated else !decoderName.startsWith("OMX.google.") && !decoderName.startsWith("c2.android.")
+                }
+            }.getOrNull()
+            _stats.update { it.copy(decoder = decoderName, hardware = hardware) }
+        }
+
+        override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: DecoderReuseEvaluation?) {
+            _stats.update { it.copy(frameRate = format.frameRate.takeIf { rate -> rate > 0 }, codec = codecName(format.sampleMimeType)) }
+        }
+
+        override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+            _stats.update { it.copy(droppedFrames = it.droppedFrames + droppedFrames) }
         }
     }
 
@@ -1167,6 +1306,8 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
         const val PROGRESS_REPORT_MS = 10_000L
         /** Previous restarts the episode instead, once this far in. */
         const val RESTART_THRESHOLD_MS = 5_000L
+        /** Enough for a heavily typeset season's fonts; a runaway attachment list stops here. */
+        const val MAX_FONT_BYTES = 48L * 1024 * 1024
         const val END_TOLERANCE_MS = 1_500L
         /** Up Next countdown from the credits, shortened if the credits are shorter. */
         const val COUNTDOWN_MS = 10_000L
@@ -1177,4 +1318,14 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
         const val MAX_AUTOPLAY_CHAIN = 3
         const val EXTERNAL_PREFIX = "ffext-"
     }
+}
+
+private fun codecName(mime: String?): String? = when (mime) {
+    MimeTypes.VIDEO_H264 -> "H.264"
+    MimeTypes.VIDEO_H265 -> "HEVC"
+    MimeTypes.VIDEO_AV1 -> "AV1"
+    MimeTypes.VIDEO_VP9 -> "VP9"
+    MimeTypes.VIDEO_DOLBY_VISION -> "Dolby Vision"
+    null -> null
+    else -> mime.substringAfter('/').uppercase()
 }

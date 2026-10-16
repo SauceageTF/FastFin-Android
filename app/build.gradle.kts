@@ -34,6 +34,24 @@ android {
         }
     }
 
+    // libass is native code (about 4 MB per CPU type). One APK per CPU type,
+    // so a phone downloads only its own copy: arm64 for virtually every phone
+    // since 2017, 32-bit ARM for older ones, x86_64 for the emulator.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
+    packaging {
+        // Compressed in the APK (about half the size) and unpacked once at install,
+        // instead of stored raw for in-place loading: a smaller download.
+        jniLibs { useLegacyPackaging = true }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -81,6 +99,7 @@ dependencies {
     implementation(libs.media3.session)
     // Only for SubtitleView (renders PGS/VobSub bitmaps and styled ASS text).
     implementation(libs.media3.ui)
+    implementation(libs.libass.media3)
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
