@@ -88,3 +88,16 @@ the layout phase, so the decoder and buffers are never torn down. Leaving the
 app while a video plays drops it into Picture in Picture (Android 12+ glides
 in automatically) with back/play/forward controls. Closing the PiP window
 pauses and returns to the mini player.
+
+## License
+
+FastFin is free software under the [GNU General Public License v3.0](LICENSE).
+It bundles FFmpeg decoders through NextLib, which is GPL-3.0, so the app as a
+whole is distributed under the same terms.
+
+Third-party components:
+
+- [NextLib](https://github.com/anilbeesetti/nextlib) (GPL-3.0): FFmpeg decoders for Media3
+- [FFmpeg](https://ffmpeg.org) (LGPL-2.1+) and [dav1d](https://code.videolan.org/videolan/dav1d) (BSD-2-Clause): AV1 and audio decoding
+- [libass-android](https://github.com/peerless2012/libass-android) (MIT) and [libass](https://github.com/libass/libass) (ISC): ASS/SSA subtitles
+- [AndroidX Media3](https://github.com/androidx/media), Jetpack Compose, OkHttp, Coil and kotlinx.serialization (Apache-2.0)

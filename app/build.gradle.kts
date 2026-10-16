@@ -18,8 +18,8 @@ android {
         applicationId = "com.veeha.fastfin"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.5.0"
+        versionCode = 7
+        versionName = "1.5.1"
     }
 
     buildTypes {
@@ -100,6 +100,7 @@ dependencies {
     // Only for SubtitleView (renders PGS/VobSub bitmaps and styled ASS text).
     implementation(libs.media3.ui)
     implementation(libs.libass.media3)
+    implementation(libs.nextlib.media3ext)
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)

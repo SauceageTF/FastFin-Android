@@ -12,6 +12,8 @@ composeBom = "2026.06.00"
 media3 = "1.11.1"
 # libass for Media3; 0.5.1 is the release Jellyfin's Android TV app pairs with Media3 1.11.1.
 libass-android = "0.5.1"
+# FFmpeg decoders for Media3: dav1d for AV1 without a hardware decoder, plus DTS/TrueHD/AC3 audio. GPL-3.0.
+nextlib = "1.11.1-0.16.0"
 coil = "3.5.0"
 okhttp = "4.12.0"
 serialization = "1.11.0"
@@ -35,6 +37,7 @@ media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasourc
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 libass-media3 = { group = "io.github.peerless2012", name = "ass-media", version.ref = "libass-android" }
+nextlib-media3ext = { group = "io.github.anilbeesetti", name = "nextlib-media3ext", version.ref = "nextlib" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }

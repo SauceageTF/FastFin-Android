@@ -93,4 +93,12 @@ class HdrPolicyTest {
             .map { it["Format"]!!.jsonPrimitive.content }
         assertTrue("pgssub" in embedded && "dvdsub" in embedded && "ass" in embedded)
     }
+
+    @Test
+    fun softwareAv1DecoderIsSdrOnlyEvenOnAnHdrScreen() {
+        // dav1d on a tablet with no AV1 hardware (a Galaxy Tab S6 Lite): plays 10-bit
+        // AV1, but HDR goes to the server for tone-mapping.
+        val dav1d = VideoDecoder("av1", "AV1 (dav1d)", 1920, 1088, tenBit = true, hdr10 = false, hdr10Plus = false, hardware = false)
+        assertEquals(listOf("SDR"), DeviceProfile.rangeTypes(dav1d, caps(video = listOf(dav1d)), HdrMode.Always))
+    }
 }

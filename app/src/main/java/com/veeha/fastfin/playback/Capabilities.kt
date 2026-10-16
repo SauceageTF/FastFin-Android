@@ -79,6 +79,18 @@ object CapabilityProbe {
         Triple("video/mp4v-es", "mpeg4", "MPEG-4"),
     )
 
+    /** Too heavy to decode in software at the resolutions people watch. */
+    private val HARDWARE_ONLY = setOf("hevc", "vp9")
+
+    /** AV1 through dav1d, for devices with no AV1 hardware. */
+    private val Dav1d = VideoDecoder(
+        codec = "av1", label = "AV1 (dav1d)", maxWidth = 1920, maxHeight = 1088,
+        tenBit = true, hdr10 = false, hdr10Plus = false, hardware = false,
+    )
+
+    /** Decoded by the FFmpeg extension wherever the platform can't. */
+    private val FFMPEG_AUDIO = listOf("ac3", "eac3", "dts", "truehd", "flac", "alac", "opus", "vorbis")
+
     private val AUDIO = mapOf(
         "audio/mp4a-latm" to "aac",
         "audio/mpeg" to "mp3",
@@ -102,8 +114,10 @@ object CapabilityProbe {
         val video = VIDEO.mapNotNull { (mime, codec, label) -> videoDecoder(decoders, mime, codec, label) }
 
         val audio = buildSet {
-            // ExoPlayer always handles these (framework decoders or PCM).
+            // ExoPlayer always handles these (framework decoders or PCM)...
             addAll(listOf("aac", "mp3", "pcm_s16le", "pcm_s24le"))
+            // ...and the FFmpeg extension decodes these when the platform can't.
+            addAll(FFMPEG_AUDIO)
             for (info in decoders) for (type in info.supportedTypes) AUDIO[type.lowercase()]?.let(::add)
         }
 
@@ -131,6 +145,15 @@ object CapabilityProbe {
         val all = decoders.filter { info -> info.supportedTypes.any { it.equals(mime, ignoreCase = true) } }
         if (all.isEmpty()) return null
         val hardware = all.filter(::isHardware)
+        // No AV1 hardware: dav1d (the FFmpeg extension) plays it instead of
+        // Android's slower software decoder, which a Galaxy Tab S6 Lite can't
+        // run in real time. Up to 1080p, and SDR only: HDR AV1 is tone-mapped
+        // by the server, since this path can't output HDR.
+        if (hardware.isEmpty() && codec == "av1") return Dav1d
+        // HEVC and VP9 in software can't hold real time on most phone and tablet
+        // CPUs either. Without hardware they aren't offered, and Jellyfin
+        // converts them to H.264, which every device decodes in hardware.
+        if (hardware.isEmpty() && codec in HARDWARE_ONLY) return null
         val pool = hardware.ifEmpty { all }
 
         var width = 0

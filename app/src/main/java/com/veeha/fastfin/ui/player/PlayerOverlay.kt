@@ -408,6 +408,7 @@ private fun statsLine(stats: PlaybackStats): String? {
     }
     val fps = stats.frameRate?.let { "%.3f".format(it).trimEnd('0').trimEnd('.') + " fps" }
     val dropped = if (stats.droppedFrames == 1) "1 dropped frame" else "${stats.droppedFrames} dropped frames"
-    val decoded = stats.codec?.let { "$it $kind" } ?: kind.replaceFirstChar(Char::uppercase)
+    val engine = if (stats.decoder.contains("dav1d")) " (dav1d)" else ""
+    val decoded = (stats.codec?.let { "$it $kind" } ?: kind.replaceFirstChar(Char::uppercase)) + engine
     return listOfNotNull(decoded, fps, dropped).joinToString("  ·  ")
 }

@@ -30,6 +30,8 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.PlayerMessage
 import androidx.media3.exoplayer.DecoderReuseEvaluation
@@ -817,7 +819,12 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
         val assParsers = AssSubtitleParserFactory(ass)
         val renderers = AssRenderersFactory(
             ass,
-            DefaultRenderersFactory(app)
+            // FFmpeg decoders after the platform's (EXTENSION_RENDERER_MODE_ON):
+            // dav1d for AV1 when there's no AV1 hardware, and DTS, TrueHD, AC3 and
+            // E-AC3 audio, which most phones can't decode, without a server transcode.
+            NextRenderersFactory(app)
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                .setMediaCodecSelector(HardwareAv1Only)
                 // If a hardware decoder refuses to initialise, try the next one
                 // before giving up on direct play.
                 .setEnableDecoderFallback(true),
@@ -902,7 +909,8 @@ class PlaybackManager(private val app: Application, private val graph: AppGraph)
 
     private val statsListener = object : AnalyticsListener {
         override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
-            val hardware = runCatching {
+            // FFmpeg extension decoders (dav1d) are software, and not in MediaCodecList.
+            val hardware = if (decoderName.startsWith("ffmpeg")) false else runCatching {
                 MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.firstOrNull { it.name == decoderName }?.let { info ->
                     if (Build.VERSION.SDK_INT >= 29) info.isHardwareAccelerated else !decoderName.startsWith("OMX.google.") && !decoderName.startsWith("c2.android.")
                 }
@@ -1328,4 +1336,16 @@ private fun codecName(mime: String?): String? = when (mime) {
     MimeTypes.VIDEO_DOLBY_VISION -> "Dolby Vision"
     null -> null
     else -> mime.substringAfter('/').uppercase()
+}
+
+/**
+ * Android's own software AV1 decoder (libgav1) can't hold real time on most
+ * phone and tablet CPUs; dav1d, in the FFmpeg extension, can. Offering only
+ * hardware AV1 decoders here makes the platform renderer decline AV1 on
+ * devices without AV1 hardware, so Media3 moves on to dav1d.
+ */
+@OptIn(UnstableApi::class)
+private val HardwareAv1Only = MediaCodecSelector { mimeType, secure, tunneling ->
+    val decoders = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, secure, tunneling)
+    if (mimeType == MimeTypes.VIDEO_AV1) decoders.filter { it.hardwareAccelerated } else decoders
 }

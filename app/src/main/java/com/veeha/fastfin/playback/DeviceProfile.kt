@@ -163,7 +163,8 @@ object DeviceProfile {
     fun rangeTypes(decoder: VideoDecoder, caps: DeviceCapabilities, mode: HdrMode): List<String> {
         val out = mutableListOf("SDR")
         if (decoder.codec == "hevc") out += "DOVIWithSDR"
-        if (mode == HdrMode.Sdr) return out
+        // Software decoding (dav1d) outputs SDR: HDR goes to the server to tone-map.
+        if (mode == HdrMode.Sdr || !decoder.hardware) return out
 
         val always = mode == HdrMode.Always
         val display = caps.displayHdr
